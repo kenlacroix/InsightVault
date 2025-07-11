@@ -25,7 +25,14 @@ A local desktop application that helps you explore and reflect on your personal 
 git clone <repository-url>
 cd insightvault
 
-# Install Python dependencies
+# Option A: Use the setup script (recommended)
+python setup.py
+
+# Option B: Manual installation
+# Install PySimpleGUI from private server
+pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI>=5.0.10
+
+# Install other dependencies
 pip install -r requirements.txt
 ```
 
@@ -45,6 +52,7 @@ cp config.json.example config.json
 ```
 
 **Get your OpenAI API key:**
+
 1. Visit [OpenAI API Keys](https://platform.openai.com/api-keys)
 2. Create a new secret key
 3. Add it to your `config.json` file
@@ -52,12 +60,14 @@ cp config.json.example config.json
 ### 3. Prepare Your Data
 
 **Export your ChatGPT conversations:**
+
 1. Go to [ChatGPT Settings](https://chat.openai.com/settings/data-export)
 2. Request a data export
 3. Download and extract the `conversations.json` file
 4. Place it in the `data/` folder (or load it via the GUI)
 
 **Or use sample data:**
+
 - Sample conversations are included in `data/sample_conversations.json`
 
 ### 4. Launch the Application
@@ -89,12 +99,14 @@ python main.py --help-detailed
 ### Generating Insights
 
 1. **Choose a Question**: Select from predefined questions or write your own:
+
    - "How have I grown spiritually over time?"
    - "What emotional patterns have I been working through?"
    - "How has my relationship with anxiety evolved?"
    - "What breakthroughs have I had regarding childhood trauma?"
 
 2. **Generate Insight**: Click "Generate Insight" to get an AI-powered reflection that includes:
+
    - **Deep Analysis**: Multi-paragraph reflection on your growth patterns
    - **Meaningful Quotes**: Key excerpts from your conversations
    - **Themes**: Recurring topics and patterns identified
@@ -105,11 +117,13 @@ python main.py --help-detailed
 ### AI Features
 
 **Automatic Summarization:**
+
 - Click "Tools" → "Summarize All" to process all conversations
 - Generates: Auto-titles, 2-5 sentence summaries, and topic tags
 - Results are cached to avoid reprocessing
 
 **Smart Caching:**
+
 - All GPT results are cached locally
 - Use "Tools" → "Clear Cache" to force regeneration
 
@@ -137,19 +151,26 @@ insightvault/
 
 ### Tech Stack
 
-| Component | Technology |
-|-----------|------------|
-| **Language** | Python 3.7+ |
-| **AI/NLP** | OpenAI GPT-4 API |
-| **GUI** | PySimpleGUI |
-| **Data** | JSON, Pickle (cache) |
-| **Export** | Markdown, CSV |
+| Component    | Technology           |
+| ------------ | -------------------- |
+| **Language** | Python 3.7+          |
+| **AI/NLP**   | OpenAI GPT-4 API     |
+| **GUI**      | PySimpleGUI          |
+| **Data**     | JSON, Pickle (cache) |
+| **Export**   | Markdown, CSV        |
 
 ### Dependencies
 
 - `openai>=1.3.0` - OpenAI API client
-- `PySimpleGUI>=4.60.0` - GUI framework
+- `PySimpleGUI>=5.0.10` - GUI framework (from private server)
 - `python-dateutil>=2.8.0` - Date parsing utilities
+- `matplotlib>=3.6.0` - Data visualization
+- `seaborn>=0.12.0` - Statistical visualization
+- `plotly>=5.13.0` - Interactive charts
+- `pandas>=1.5.0` - Data manipulation
+- `numpy>=1.24.0` - Numerical computing
+- `scikit-learn>=1.2.0` - Machine learning
+- `textblob>=0.17.0` - Sentiment analysis
 
 ### Data Privacy
 
@@ -161,21 +182,25 @@ insightvault/
 ## 💡 Sample Reflective Questions
 
 **Spiritual Growth:**
+
 - "How has my spiritual practice evolved over time?"
 - "What insights have I gained about my relationship with the divine?"
 - "How have I grown in mindfulness and presence?"
 
 **Emotional Healing:**
+
 - "What patterns do I see in my emotional responses?"
 - "How has my relationship with difficult emotions changed?"
 - "What breakthroughs have I had in therapy or self-work?"
 
 **Personal Development:**
+
 - "How has my sense of identity and self-worth evolved?"
 - "What have I learned about setting boundaries?"
 - "How have my perspectives on relationships developed?"
 
 **Life Direction:**
+
 - "What insights have I gained about my life purpose?"
 - "How have my values and priorities shifted?"
 - "What patterns do I see in my decision-making?"
@@ -209,21 +234,25 @@ The modular design makes it easy to extend:
 ### Common Issues
 
 **"Import error: No module named 'openai'"**
+
 ```bash
 pip install -r requirements.txt
 ```
 
 **"Config file not found"**
+
 ```bash
 cp config.json.example config.json
 # Then edit config.json with your API key
 ```
 
 **"Failed to load conversations"**
+
 - Ensure your JSON file is valid ChatGPT export format
 - Try with the sample data first: `data/sample_conversations.json`
 
 **"AI components not available"**
+
 - Check that your OpenAI API key is valid and has credits
 - Verify your `config.json` format matches the example
 
@@ -239,6 +268,7 @@ cp config.json.example config.json
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
 **What this means:**
+
 - ✅ Free for commercial and personal use
 - ✅ You can modify, distribute, and build on it
 - ✅ No warranty or liability
