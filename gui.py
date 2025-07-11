@@ -84,12 +84,12 @@ class InsightVaultGUI:
             [sg.Text('Filter by tag:'), sg.Combo([], key='-TAG_FILTER-', size=(20, 1), enable_events=True)],
             [sg.Listbox(
                 values=[], 
-                key='-CONV_LIST-', 
+                key='-CONVERSATION-LIST-', 
                 size=(50, 20), 
                 enable_events=True,
                 horizontal_scroll=True
             )],
-            [sg.Text('Total: 0 conversations', key='-CONV_COUNT-')],
+            [sg.Text('Total: 0 conversations', key='-CONV-COUNT-')],
             # Phase 4: Pagination controls
             [sg.Button('← Previous', key='-PREV_PAGE-', disabled=True),
              sg.Text('Page 1/1', key='-PAGE_INFO-'),
@@ -173,7 +173,7 @@ class InsightVaultGUI:
         # Statistics frame
         stats_frame = [
             [sg.Text('Statistics:', font=('Arial', 10, 'bold'))],
-            [sg.Multiline(key='-STATS-', size=(40, 8), disabled=True)]
+            [sg.Multiline(key='-STATUS-', size=(40, 8), disabled=True)]
         ]
         
         # Content display frame
@@ -355,8 +355,8 @@ class InsightVaultGUI:
             display_text = f"{date_str} | {title}"
             conv_display.append(display_text)
         
-        window['-CONV_LIST-'].update(values=conv_display)
-        window['-CONV_COUNT-'].update(f'Total: {len(self.filtered_conversations)} conversations')
+        window['-CONVERSATION-LIST-'].update(values=conv_display)
+        window['-CONV-COUNT-'].update(f'Total: {len(self.filtered_conversations)} conversations')
     
     def _update_tag_filter(self, window):
         """Update the tag filter dropdown"""
@@ -394,7 +394,7 @@ class InsightVaultGUI:
             return
         
         # Find the selected conversation
-        selected_index = window['-CONV_LIST-'].widget.curselection()[0]
+        selected_index = window['-CONVERSATION-LIST-'].widget.curselection()[0]
         if selected_index < len(self.filtered_conversations):
             conv = self.filtered_conversations[selected_index]
             

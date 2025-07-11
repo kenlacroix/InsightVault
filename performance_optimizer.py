@@ -69,11 +69,12 @@ class PaginatedConversationLoader:
             
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS messages (
-                    id TEXT PRIMARY KEY,
+                    id TEXT,
                     conversation_id TEXT,
                     role TEXT,
                     content TEXT,
                     create_time INTEGER,
+                    PRIMARY KEY (conversation_id, id),
                     FOREIGN KEY (conversation_id) REFERENCES conversations (id)
                 )
             """)
