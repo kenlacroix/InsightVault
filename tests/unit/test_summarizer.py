@@ -421,10 +421,15 @@ TAGS: second, test
             
             conversations = [Conversation(self.test_conversation_data)]
             
-            # Try to export to invalid path
-            result = summarizer.export_summaries(conversations, '/invalid/path/summaries.md')
+            # Try to export to a path that should fail (read-only directory or invalid filename)
+            # Use a path that should definitely fail on Windows
+            result = summarizer.export_summaries(conversations, 'C:/Windows/System32/invalid_file.md')
             
-            assert result is False
+            # On Windows, this might actually succeed due to admin privileges
+            # So we'll test with a more reliable approach - mock the file operation to fail
+            with patch('builtins.open', side_effect=PermissionError("Access denied")):
+                result = summarizer.export_summaries(conversations, 'test_output.md')
+                assert result is False
     
     def test_cache_operations(self):
         """Test cache loading and saving operations"""

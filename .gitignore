@@ -208,4 +208,8 @@ __marimo__/
 # InsightVault specific files
 config.json
 data/cache/*
+data/analytics_cache/*
 output/*.md
+output/*.csv
+output/*.json
+output/*.html
