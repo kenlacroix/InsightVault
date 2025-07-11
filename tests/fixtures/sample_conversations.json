@@ -1,0 +1,85 @@
+[
+  {
+    "id": "test-conv-1",
+    "title": "Anxiety and Spiritual Growth",
+    "create_time": 1640995200,
+    "update_time": 1640995800,
+    "mapping": {
+      "msg-1": {
+        "id": "msg-1",
+        "message": {
+          "id": "msg-1",
+          "author": {"role": "user"},
+          "create_time": 1640995200,
+          "content": {
+            "content_type": "text",
+            "parts": ["I've been struggling with anxiety lately and wondering how to connect with my spiritual practice during difficult times."]
+          }
+        }
+      },
+      "msg-2": {
+        "id": "msg-2", 
+        "message": {
+          "id": "msg-2",
+          "author": {"role": "assistant"},
+          "create_time": 1640995300,
+          "content": {
+            "content_type": "text",
+            "parts": ["Anxiety can actually be a gateway to deeper spiritual understanding. When we're anxious, we're often being called to examine what we're truly afraid of losing or not having. This creates an opportunity for spiritual growth through surrender and trust."]
+          }
+        }
+      },
+      "msg-3": {
+        "id": "msg-3",
+        "message": {
+          "id": "msg-3", 
+          "author": {"role": "user"},
+          "create_time": 1640995400,
+          "content": {
+            "content_type": "text",
+            "parts": ["That's really helpful. I've noticed that my anxiety often comes up when I'm trying to control outcomes instead of trusting the process."]
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "test-conv-2",
+    "title": "Meditation and Self-Compassion",
+    "create_time": 1641081600,
+    "update_time": 1641082200,
+    "mapping": {
+      "msg-4": {
+        "id": "msg-4",
+        "message": {
+          "id": "msg-4",
+          "author": {"role": "user"},
+          "create_time": 1641081600,
+          "content": {
+            "content_type": "text",
+            "parts": ["I'm working on developing more self-compassion through meditation. Sometimes I feel like I'm being too hard on myself."]
+          }
+        }
+      },
+      "msg-5": {
+        "id": "msg-5",
+        "message": {
+          "id": "msg-5",
+          "author": {"role": "assistant"},
+          "create_time": 1641081700,
+          "content": {
+            "content_type": "text",
+            "parts": ["Self-compassion is one of the most transformative practices we can cultivate. It's about treating yourself with the same kindness you'd show a good friend who was struggling."]
+          }
+        }
+      }
+    }
+  },
+  {
+    "id": "test-conv-3",
+    "title": "Empty Conversation",
+    "create_time": 1641168000,
+    "update_time": 1641168000,
+    "mapping": {}
+  }
+]

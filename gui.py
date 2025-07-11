@@ -20,25 +20,44 @@ class InsightVaultGUI:
         self.parser = ChatParser()
         self.summarizer = None
         self.insight_engine = None
+        self.analytics_engine = None  # Add analytics engine
         self.current_conversations: List[Conversation] = []
         self.filtered_conversations: List[Conversation] = []
         
-        # Set up PySimpleGUI theme
-        sg.theme('DarkBlue3')
+        # GUI State
+        self.selected_conversations = []
+        self.current_insights = {}
         
-        # Initialize components when config is available
-        self._try_initialize_ai_components()
+        # Analytics state
+        self.analytics_data = None
+        
+        # Initialize AI components if config exists
+        self._initialize_ai_components()
+        
+        # Set theme
+        sg.theme('LightBlue3')
     
-    def _try_initialize_ai_components(self):
-        """Try to initialize AI components if config exists"""
-        try:
-            if os.path.exists('config.json'):
-                self.summarizer = ConversationSummarizer()
-                self.insight_engine = InsightEngine()
-                return True
-        except Exception as e:
-            print(f"Warning: Could not initialize AI components: {e}")
-        return False
+    def _initialize_ai_components(self):
+        """Initialize AI components if configuration is available"""
+        config_files = ['config.json', 'config.json.example']
+        
+        for config_file in config_files:
+            if os.path.exists(config_file):
+                try:
+                    # Test if we can initialize (even with invalid key)
+                    self.summarizer = ConversationSummarizer(config_file)
+                    self.insight_engine = InsightEngine(config_file)
+                    
+                    # Add analytics engine initialization
+                    from analytics_engine import AnalyticsEngine
+                    self.analytics_engine = AnalyticsEngine(config_file)
+                    
+                    print(f"AI components initialized with {config_file}")
+                    return
+                except Exception as e:
+                    print(f"Could not initialize AI components with {config_file}: {e}")
+        
+        print("AI components not available - config file needed")
     
     def create_main_layout(self) -> List[List[Any]]:
         """Create the main window layout"""
@@ -104,58 +123,162 @@ class InsightVaultGUI:
         
         return layout
     
-    def run(self):
-        """Run the main GUI application"""
-        layout = self.create_main_layout()
-        window = sg.Window('InsightVault - Personal Growth Reflection Tool', 
-                          layout, 
-                          resizable=True, 
-                          finalize=True)
+    def create_main_window(self):
+        """Create the main application window"""
+        # File management frame
+        file_frame = [
+            [sg.Text('Conversation File:', font=('Arial', 10, 'bold'))],
+            [sg.Input(key='-FILE-', enable_events=True, expand_x=True), 
+             sg.FileBrowse(file_types=(("JSON files", "*.json"),))],
+            [sg.Button('Load Conversations', key='-LOAD-'), 
+             sg.Button('Reload', key='-RELOAD-')]
+        ]
         
-        # Store current insight for export
-        current_insight = None
+        # Conversation list frame
+        conversation_frame = [
+            [sg.Text('Conversations:', font=('Arial', 10, 'bold')),
+             sg.Text('', key='-CONV-COUNT-', text_color='blue')],
+            [sg.Listbox(values=[], key='-CONVERSATION-LIST-', 
+                       enable_events=True, expand_x=True, expand_y=True, 
+                       select_mode=sg.LISTBOX_SELECT_MODE_EXTENDED)]
+        ]
+        
+        # Search and filter frame
+        search_frame = [
+            [sg.Text('Search:', font=('Arial', 10, 'bold'))],
+            [sg.Input(key='-SEARCH-', enable_events=True, expand_x=True)],
+            [sg.Text('Date Range:')],
+            [sg.Input(key='-START-DATE-', size=(12, 1)), 
+             sg.Text('to'), 
+             sg.Input(key='-END-DATE-', size=(12, 1)),
+             sg.Button('Filter', key='-FILTER-')]
+        ]
+        
+        # Statistics frame
+        stats_frame = [
+            [sg.Text('Statistics:', font=('Arial', 10, 'bold'))],
+            [sg.Multiline(key='-STATS-', size=(40, 8), disabled=True)]
+        ]
+        
+        # Content display frame
+        content_frame = [
+            [sg.Text('Selected Conversation:', font=('Arial', 10, 'bold'))],
+            [sg.Multiline(key='-CONTENT-', size=(60, 20), disabled=True, expand_x=True, expand_y=True)]
+        ]
+        
+        # AI Features Tab
+        ai_tab = [
+            [sg.Frame('Conversation Summary', [
+                [sg.Button('Summarize Selected', key='-SUMMARIZE-', disabled=True),
+                 sg.Button('Summarize All', key='-SUMMARIZE-ALL-', disabled=True)],
+                [sg.Multiline(key='-SUMMARY-', size=(70, 8), disabled=True)]
+            ], expand_x=True)],
+            
+            [sg.Frame('Insight Generation', [
+                [sg.Text('Ask a question about your conversations:')],
+                [sg.Combo(values=[], key='-QUESTION-', size=(50, 1), enable_events=True),
+                 sg.Button('Generate Insight', key='-INSIGHT-', disabled=True)],
+                [sg.Multiline(key='-INSIGHT-RESULT-', size=(70, 12), disabled=True)]
+            ], expand_x=True)],
+            
+            [sg.Frame('Export', [
+                [sg.Button('Export Summaries', key='-EXPORT-SUMMARIES-', disabled=True),
+                 sg.Button('Export Insight', key='-EXPORT-INSIGHT-', disabled=True)]
+            ], expand_x=True)]
+        ]
+        
+        # Analytics Tab (NEW)
+        analytics_tab = [
+            [sg.Frame('Analytics Overview', [
+                [sg.Button('Generate Analytics', key='-GENERATE-ANALYTICS-', disabled=True),
+                 sg.Button('Refresh Analytics', key='-REFRESH-ANALYTICS-', disabled=True)],
+                [sg.Multiline(key='-ANALYTICS-SUMMARY-', size=(70, 8), disabled=True)]
+            ], expand_x=True)],
+            
+            [sg.Frame('Visualizations', [
+                [sg.Button('Sentiment Timeline', key='-SENTIMENT-CHART-', disabled=True),
+                 sg.Button('Emotional Patterns', key='-EMOTIONAL-CHART-', disabled=True)],
+                [sg.Button('Growth Metrics', key='-GROWTH-CHART-', disabled=True),
+                 sg.Button('Topic Analysis', key='-TOPIC-CHART-', disabled=True)],
+                [sg.Button('Create Dashboard', key='-CREATE-DASHBOARD-', disabled=True)]
+            ], expand_x=True)],
+            
+            [sg.Frame('Data Export', [
+                [sg.Button('Export Analytics (CSV)', key='-EXPORT-CSV-', disabled=True),
+                 sg.Button('Export Analytics (JSON)', key='-EXPORT-JSON-', disabled=True)],
+                [sg.Text('Export Status:', key='-EXPORT-STATUS-', text_color='green')]
+            ], expand_x=True)]
+        ]
+        
+        # Left column
+        left_column = [
+            [sg.Frame('File Management', file_frame, expand_x=True)],
+            [sg.Frame('Search & Filter', search_frame, expand_x=True)],
+            [sg.Frame('Statistics', stats_frame, expand_x=True, expand_y=True)]
+        ]
+        
+        # Right column
+        right_column = [
+            [sg.Frame('Conversations', conversation_frame, expand_x=True, expand_y=True)],
+            [sg.Frame('Content', content_frame, expand_x=True, expand_y=True)]
+        ]
+        
+        # Main layout with tabs
+        layout = [
+            [sg.Column(left_column, vertical_alignment='top', expand_y=True),
+             sg.Column(right_column, vertical_alignment='top', expand_x=True, expand_y=True)],
+            [sg.TabGroup([[
+                sg.Tab('AI Features', ai_tab),
+                sg.Tab('Analytics', analytics_tab)  # NEW analytics tab
+            ]], expand_x=True, expand_y=True)]
+        ]
+        
+        return sg.Window('InsightVault - Personal Growth Conversation Analyzer', 
+                        layout, resizable=True, size=(1200, 800), finalize=True)
+    
+    def run(self):
+        """Main application loop"""
+        window = self.create_main_window()
+        
+        # Load sample questions if insight engine is available
+        if self.insight_engine:
+            from insight_engine import SAMPLE_QUESTIONS
+            window['-QUESTION-'].update(values=SAMPLE_QUESTIONS)
         
         while True:
             event, values = window.read()
             
-            if event == sg.WIN_CLOSED or event == 'Exit':
+            if event == sg.WIN_CLOSED:
                 break
             
-            try:
-                if event == 'Load Conversations':
-                    self._handle_load_conversations(window)
-                
-                elif event == '-SEARCH-':
-                    self._handle_search(window, values['-SEARCH-'])
-                
-                elif event == '-TAG_FILTER-':
-                    self._handle_tag_filter(window, values['-TAG_FILTER-'])
-                
-                elif event == '-CONV_LIST-':
-                    self._handle_conversation_selection(window, values['-CONV_LIST-'])
-                
-                elif event == 'Summarize All':
-                    self._handle_summarize_all(window)
-                
-                elif event == 'Export Summaries':
-                    self._handle_export_summaries(window)
-                
-                elif event == '-GENERATE_INSIGHT-':
-                    current_insight = self._handle_generate_insight(window, values['-QUESTION-'])
-                
-                elif event == '-EXPORT_INSIGHT-':
-                    if current_insight:
-                        self._handle_export_insight(window, current_insight)
-                
-                elif event == 'Clear Cache':
-                    self._handle_clear_cache(window)
-                
-                elif event == 'About':
-                    self._show_about_dialog()
+            # File operations
+            elif event == '-LOAD-' or event == '-FILE-':
+                self.load_conversations(values['-FILE-'], window)
             
-            except Exception as e:
-                sg.popup_error(f"An error occurred: {str(e)}")
-                window['-STATUS-'].update(f"Error: {str(e)}")
+            elif event == '-RELOAD-':
+                if values['-FILE-']:
+                    self.load_conversations(values['-FILE-'], window)
+            
+            # Conversation selection
+            elif event == '-CONVERSATION-LIST-':
+                self.show_conversation_content(values['-CONVERSATION-LIST-'], window)
+            
+            # Search and filter
+            elif event == '-SEARCH-':
+                self.search_conversations(values['-SEARCH-'], window)
+            
+            elif event == '-FILTER-':
+                self.filter_conversations(values['-START-DATE-'], values['-END-DATE-'], window)
+            
+            # AI Features
+            elif event in ['-SUMMARIZE-', '-SUMMARIZE-ALL-', '-INSIGHT-', '-EXPORT-SUMMARIES-', '-EXPORT-INSIGHT-']:
+                self.handle_ai_events(event, values, window)
+            
+            # Analytics Features (NEW)
+            elif event in ['-GENERATE-ANALYTICS-', '-REFRESH-ANALYTICS-', '-SENTIMENT-CHART-', 
+                          '-EMOTIONAL-CHART-', '-GROWTH-CHART-', '-TOPIC-CHART-', '-CREATE-DASHBOARD-',
+                          '-EXPORT-CSV-', '-EXPORT-JSON-']:
+                self.handle_analytics_events(event, values, window)
         
         window.close()
     
@@ -399,6 +522,280 @@ Version: 1.0
 License: MIT
         """
         sg.popup(about_text, title='About InsightVault')
+
+    def handle_analytics_events(self, event, values, window):
+        """Handle analytics-related events"""
+        if not self.analytics_engine:
+            sg.popup_error('Analytics engine not available. Please check your configuration.')
+            return
+        
+        if event == '-GENERATE-ANALYTICS-':
+            self.generate_analytics(window)
+        
+        elif event == '-REFRESH-ANALYTICS-':
+            self.generate_analytics(window, use_cache=False)
+        
+        elif event == '-SENTIMENT-CHART-':
+            self.create_sentiment_chart()
+        
+        elif event == '-EMOTIONAL-CHART-':
+            self.create_emotional_chart()
+        
+        elif event == '-GROWTH-CHART-':
+            self.create_growth_chart()
+        
+        elif event == '-TOPIC-CHART-':
+            self.create_topic_chart()
+        
+        elif event == '-CREATE-DASHBOARD-':
+            self.create_dashboard()
+        
+        elif event == '-EXPORT-CSV-':
+            self.export_analytics('csv', window)
+        
+        elif event == '-EXPORT-JSON-':
+            self.export_analytics('json', window)
+
+    def generate_analytics(self, window, use_cache=True):
+        """Generate comprehensive analytics for loaded conversations"""
+        if not self.current_conversations:
+            sg.popup_error('No conversations loaded. Please load conversations first.')
+            return
+        
+        try:
+            window['-GENERATE-ANALYTICS-'].update(disabled=True)
+            window.refresh()
+            
+            # Generate analytics
+            self.analytics_data = self.analytics_engine.analyze_conversations(
+                self.current_conversations, use_cache=use_cache
+            )
+            
+            # Update analytics summary
+            summary = self.format_analytics_summary(self.analytics_data)
+            window['-ANALYTICS-SUMMARY-'].update(summary)
+            
+            # Enable analytics buttons
+            analytics_buttons = [
+                '-REFRESH-ANALYTICS-', '-SENTIMENT-CHART-', '-EMOTIONAL-CHART-',
+                '-GROWTH-CHART-', '-TOPIC-CHART-', '-CREATE-DASHBOARD-',
+                '-EXPORT-CSV-', '-EXPORT-JSON-'
+            ]
+            
+            for button in analytics_buttons:
+                if button in window.AllKeysDict:
+                    window[button].update(disabled=False)
+            
+            sg.popup('Analytics generated successfully!', title='Success')
+            
+        except Exception as e:
+            sg.popup_error(f'Error generating analytics: {str(e)}')
+        
+        finally:
+            window['-GENERATE-ANALYTICS-'].update(disabled=False)
+
+    def format_analytics_summary(self, analytics_data):
+        """Format analytics data for display in GUI"""
+        if not analytics_data:
+            return "No analytics data available."
+        
+        start_date = analytics_data.date_range[0].strftime('%Y-%m-%d')
+        end_date = analytics_data.date_range[1].strftime('%Y-%m-%d')
+        
+        summary = f"""📊 ANALYTICS SUMMARY
+─────────────────────────────
+
+📈 Basic Statistics:
+• Total Conversations: {analytics_data.conversation_count:,}
+• Total Messages: {analytics_data.total_messages:,}
+• Date Range: {start_date} to {end_date}
+• Total Characters: {analytics_data.engagement_stats.get('total_characters', 0):,}
+
+🏷️ Top Topics:
+"""
+        
+        # Add top 5 tags
+        for i, (tag, count) in enumerate(analytics_data.top_tags[:5], 1):
+            summary += f"  {i}. {tag.title()}: {count} conversations\n"
+        
+        # Add growth metrics if available
+        if analytics_data.growth_metrics:
+            summary += f"\n📊 Growth Metrics:\n"
+            for metric, value in list(analytics_data.growth_metrics.items())[:5]:
+                direction = "↗️" if value > 0 else "↘️" if value < 0 else "➡️"
+                metric_name = metric.replace('_growth', '').replace('_', ' ').title()
+                summary += f"  {direction} {metric_name}: {value:.1%}\n"
+        
+        # Add engagement stats
+        avg_gap = analytics_data.engagement_stats.get('avg_conversation_gap_days', 0)
+        most_active = analytics_data.engagement_stats.get('most_active_month', 'N/A')
+        
+        summary += f"""
+💬 Engagement Insights:
+• Average days between conversations: {avg_gap:.1f}
+• Most active month: {most_active}
+• Average message length: {analytics_data.engagement_stats.get('avg_message_length', 0):.0f} chars
+
+🎯 Ready for visualization and export!"""
+        
+        return summary
+
+    def create_sentiment_chart(self):
+        """Create and open sentiment timeline chart"""
+        if not self.analytics_data or not self.analytics_data.sentiment_trends:
+            sg.popup_error('No sentiment data available. Sentiment analysis may be disabled or no conversations found.')
+            return
+        
+        try:
+            chart_path = self.analytics_engine.create_sentiment_timeline_chart(
+                self.analytics_data.sentiment_trends
+            )
+            
+            if chart_path and os.path.exists(chart_path):
+                import webbrowser
+                webbrowser.open('file://' + os.path.abspath(chart_path))
+                sg.popup(f'Sentiment timeline chart created!\nFile: {chart_path}', title='Chart Created')
+            else:
+                sg.popup_error('Failed to create sentiment chart.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error creating sentiment chart: {str(e)}')
+
+    def create_emotional_chart(self):
+        """Create and open emotional patterns chart"""
+        if not self.analytics_data or not self.analytics_data.emotional_patterns:
+            sg.popup_error('No emotional patterns data available.')
+            return
+        
+        try:
+            chart_path = self.analytics_engine.create_emotional_patterns_chart(
+                self.analytics_data.emotional_patterns
+            )
+            
+            if chart_path and os.path.exists(chart_path):
+                import webbrowser
+                webbrowser.open('file://' + os.path.abspath(chart_path))
+                sg.popup(f'Emotional patterns chart created!\nFile: {chart_path}', title='Chart Created')
+            else:
+                sg.popup_error('Failed to create emotional patterns chart.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error creating emotional patterns chart: {str(e)}')
+
+    def create_growth_chart(self):
+        """Create and open growth metrics chart"""
+        if not self.analytics_data or not self.analytics_data.growth_metrics:
+            sg.popup_error('No growth metrics data available.')
+            return
+        
+        try:
+            chart_path = self.analytics_engine.create_growth_metrics_chart(
+                self.analytics_data.growth_metrics
+            )
+            
+            if chart_path and os.path.exists(chart_path):
+                import webbrowser
+                webbrowser.open('file://' + os.path.abspath(chart_path))
+                sg.popup(f'Growth metrics chart created!\nFile: {chart_path}', title='Chart Created')
+            else:
+                sg.popup_error('Failed to create growth metrics chart.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error creating growth metrics chart: {str(e)}')
+
+    def create_topic_chart(self):
+        """Create and open topic analysis chart"""
+        if not self.analytics_data or not self.analytics_data.top_tags:
+            sg.popup_error('No topic data available.')
+            return
+        
+        try:
+            chart_path = self.analytics_engine.create_tag_analysis_chart(
+                self.analytics_data.top_tags
+            )
+            
+            if chart_path and os.path.exists(chart_path):
+                import webbrowser
+                webbrowser.open('file://' + os.path.abspath(chart_path))
+                sg.popup(f'Topic analysis chart created!\nFile: {chart_path}', title='Chart Created')
+            else:
+                sg.popup_error('Failed to create topic analysis chart.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error creating topic analysis chart: {str(e)}')
+
+    def create_dashboard(self):
+        """Create and open comprehensive analytics dashboard"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            dashboard_path = self.analytics_engine.create_comprehensive_dashboard(
+                self.analytics_data
+            )
+            
+            if dashboard_path and os.path.exists(dashboard_path):
+                import webbrowser
+                webbrowser.open('file://' + os.path.abspath(dashboard_path))
+                sg.popup(f'Analytics dashboard created!\nFile: {dashboard_path}', title='Dashboard Created')
+            else:
+                sg.popup_error('Failed to create analytics dashboard.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error creating analytics dashboard: {str(e)}')
+
+    def export_analytics(self, format_type, window):
+        """Export analytics data in specified format"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            export_path = self.analytics_engine.export_analytics_data(
+                self.analytics_data, format=format_type
+            )
+            
+            if export_path and os.path.exists(export_path):
+                window['-EXPORT-STATUS-'].update(f'Exported: {os.path.basename(export_path)}')
+                sg.popup(f'Analytics data exported successfully!\nFile: {export_path}', title='Export Complete')
+            else:
+                sg.popup_error(f'Failed to export analytics data as {format_type.upper()}.')
+                
+        except Exception as e:
+            sg.popup_error(f'Error exporting analytics data: {str(e)}')
+
+    # Bridge methods for new interface compatibility
+    def load_conversations(self, file_path, window):
+        """Load conversations from file"""
+        if file_path:
+            self._handle_load_conversations(window)
+
+    def show_conversation_content(self, selection, window):
+        """Show content of selected conversations"""
+        self._handle_conversation_selection(window, selection)
+
+    def search_conversations(self, query, window):
+        """Search conversations"""
+        self._handle_search(window, query)
+
+    def filter_conversations(self, start_date, end_date, window):
+        """Filter conversations by date range"""
+        # Simple implementation - can be enhanced later
+        if start_date or end_date:
+            sg.popup('Date filtering not yet implemented in analytics interface')
+
+    def handle_ai_events(self, event, values, window):
+        """Handle AI-related events"""
+        if event == '-SUMMARIZE-ALL-':
+            self._handle_summarize_all(window)
+        elif event == '-EXPORT-SUMMARIES-':
+            self._handle_export_summaries(window)
+        elif event == '-INSIGHT-':
+            question = values.get('-QUESTION-', '')
+            self._handle_generate_insight(window, question)
+        else:
+            sg.popup('AI event handling not yet fully implemented')
 
 
 def main():
