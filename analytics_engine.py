@@ -25,6 +25,14 @@ try:
 except ImportError:
     SENTIMENT_AVAILABLE = False
 
+# Optional imports for advanced analytics
+try:
+    from sklearn.feature_extraction.text import TfidfVectorizer
+    from sklearn.cluster import KMeans
+    ML_AVAILABLE = True
+except ImportError:
+    ML_AVAILABLE = False
+
 from chat_parser import Conversation
 
 
@@ -39,6 +47,10 @@ class AnalyticsData:
     emotional_patterns: Dict[str, Any]
     growth_metrics: Dict[str, float]
     engagement_stats: Dict[str, Any]
+    breakthrough_moments: List[Dict[str, Any]]  # New: breakthrough detection
+    writing_style_evolution: Dict[str, Any]     # New: writing style analysis
+    concept_relationships: Dict[str, Any]       # New: concept mapping
+    goal_achievement: Dict[str, Any]            # New: goal tracking
 
 
 class AnalyticsEngine:
@@ -116,6 +128,32 @@ class AnalyticsEngine:
                 'understanding', 'realizing', 'noticing', 'observing', 'reflecting'
             ]
         }
+        
+        # Initialize breakthrough keywords for detection
+        self.breakthrough_keywords = [
+            'breakthrough', 'epiphany', 'realization', 'aha moment', 'suddenly realized',
+            'it clicked', 'everything changed', 'turning point', 'lightbulb moment',
+            'finally understood', 'made sense', 'clear now', 'got it', 'figured out',
+            'discovered', 'unlocked', 'opened up', 'transformed', 'shifted', 'changed'
+        ]
+        
+        # Initialize writing style indicators
+        self.writing_style_indicators = {
+            'complexity': ['however', 'therefore', 'consequently', 'furthermore', 'moreover', 'nevertheless'],
+            'emotional_depth': ['feel', 'emotion', 'heart', 'soul', 'deep', 'profound', 'intense'],
+            'analytical': ['analyze', 'examine', 'consider', 'evaluate', 'assess', 'investigate'],
+            'reflective': ['reflect', 'think about', 'consider', 'ponder', 'contemplate', 'meditate'],
+            'concrete': ['specific', 'example', 'instance', 'case', 'situation', 'scenario'],
+            'abstract': ['concept', 'idea', 'theory', 'principle', 'philosophy', 'understanding']
+        }
+        
+        # Initialize goal-related keywords
+        self.goal_keywords = [
+            'goal', 'objective', 'target', 'aim', 'purpose', 'intention', 'plan',
+            'achieve', 'accomplish', 'reach', 'attain', 'complete', 'finish',
+            'success', 'milestone', 'progress', 'advancement', 'development',
+            'improvement', 'growth', 'better', 'enhance', 'upgrade', 'evolve'
+        ]
     
     def analyze_conversations(self, conversations: List[Conversation], 
                             use_cache: bool = True) -> AnalyticsData:
@@ -160,6 +198,18 @@ class AnalyticsEngine:
         # Engagement statistics
         engagement_stats = self._calculate_engagement_stats(conversations)
         
+        # Breakthrough detection
+        breakthrough_moments = self._detect_breakthrough_moments(conversations)
+        
+        # Writing style analysis
+        writing_style_evolution = self._analyze_writing_style_evolution(conversations)
+        
+        # Concept relationships
+        concept_relationships = self._analyze_concept_relationships(conversations)
+        
+        # Goal achievement
+        goal_achievement = self._analyze_goal_achievement(conversations)
+        
         # Create analytics data object
         analytics_data = AnalyticsData(
             conversation_count=conversation_count,
@@ -169,7 +219,11 @@ class AnalyticsEngine:
             sentiment_trends=sentiment_trends,
             emotional_patterns=emotional_patterns,
             growth_metrics=growth_metrics,
-            engagement_stats=engagement_stats
+            engagement_stats=engagement_stats,
+            breakthrough_moments=breakthrough_moments,
+            writing_style_evolution=writing_style_evolution,
+            concept_relationships=concept_relationships,
+            goal_achievement=goal_achievement
         )
         
         # Cache results
@@ -322,6 +376,215 @@ class AnalyticsEngine:
         if monthly_counts:
             return max(monthly_counts.items(), key=lambda x: x[1])[0]
         return ""
+    
+    def _detect_breakthrough_moments(self, conversations: List[Conversation]) -> List[Dict[str, Any]]:
+        """Detect breakthrough moments in conversations"""
+        breakthroughs = []
+        
+        for conv in conversations:
+            text = conv.get_full_text().lower()
+            breakthrough_score = 0
+            detected_keywords = []
+            
+            # Check for breakthrough keywords
+            for keyword in self.breakthrough_keywords:
+                if keyword in text:
+                    breakthrough_score += 1
+                    detected_keywords.append(keyword)
+            
+            # Check for emotional intensity (high sentiment variance)
+            if SENTIMENT_AVAILABLE:
+                try:
+                    blob = TextBlob(text)
+                    sentiment_variance = abs(blob.sentiment.polarity)
+                    if sentiment_variance > 0.3:  # High emotional content
+                        breakthrough_score += 0.5
+                except:
+                    pass  # Skip sentiment analysis if it fails
+            
+            # Check for long, detailed responses (indicating deep reflection)
+            if len(text) > 1000:  # Long conversation
+                breakthrough_score += 0.5
+            
+            # If breakthrough detected
+            if breakthrough_score >= 1.0:
+                breakthroughs.append({
+                    'conversation_id': conv.id,
+                    'date': conv.create_date.isoformat(),
+                    'title': conv.auto_title or conv.title,
+                    'breakthrough_score': breakthrough_score,
+                    'detected_keywords': detected_keywords,
+                    'summary': conv.summary[:200] + '...' if len(conv.summary) > 200 else conv.summary
+                })
+        
+        # Sort by breakthrough score and date
+        breakthroughs.sort(key=lambda x: (x['breakthrough_score'], x['date']), reverse=True)
+        return breakthroughs[:10]  # Return top 10 breakthroughs
+    
+    def _analyze_writing_style_evolution(self, conversations: List[Conversation]) -> Dict[str, Any]:
+        """Analyze writing style evolution over time"""
+        if len(conversations) < 3:
+            return {}
+        
+        # Sort conversations by date
+        sorted_convs = sorted(conversations, key=lambda x: x.create_date)
+        
+        # Split into time periods
+        period_size = len(sorted_convs) // 3
+        periods = {
+            'early': sorted_convs[:period_size],
+            'middle': sorted_convs[period_size:2*period_size],
+            'recent': sorted_convs[2*period_size:]
+        }
+        
+        style_evolution = {}
+        
+        for period_name, period_convs in periods.items():
+            if not period_convs:
+                continue
+                
+            period_text = ' '.join(conv.get_full_text().lower() for conv in period_convs)
+            word_count = len(period_text.split())
+            
+            period_metrics = {}
+            
+            # Analyze each writing style dimension
+            for style_type, keywords in self.writing_style_indicators.items():
+                keyword_count = sum(period_text.count(kw) for kw in keywords)
+                period_metrics[style_type] = keyword_count / max(word_count, 1)
+            
+            # Calculate average sentence length
+            sentences = period_text.split('.')
+            avg_sentence_length = np.mean([len(s.split()) for s in sentences if s.strip()])
+            period_metrics['avg_sentence_length'] = avg_sentence_length
+            
+            # Calculate vocabulary diversity
+            unique_words = len(set(period_text.split()))
+            period_metrics['vocabulary_diversity'] = unique_words / max(word_count, 1)
+            
+            style_evolution[period_name] = period_metrics
+        
+        return style_evolution
+    
+    def _analyze_concept_relationships(self, conversations: List[Conversation]) -> Dict[str, Any]:
+        """Analyze concept relationships and topic clustering"""
+        if not conversations or not ML_AVAILABLE:
+            return {}
+        
+        # Extract all text for analysis
+        all_texts = [conv.get_full_text() for conv in conversations]
+        
+        # Create TF-IDF vectorizer
+        vectorizer = TfidfVectorizer(
+            max_features=100,
+            stop_words='english',
+            ngram_range=(1, 2),
+            min_df=2
+        )
+        
+        try:
+            # Fit and transform the texts
+            tfidf_matrix = vectorizer.fit_transform(all_texts)
+            feature_names = vectorizer.get_feature_names_out()
+            
+            # Perform topic clustering
+            n_clusters = min(5, len(conversations))
+            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
+            cluster_labels = kmeans.fit_predict(tfidf_matrix)
+            
+            # Analyze concept relationships
+            concept_relationships = {
+                'top_concepts': feature_names[:20].tolist(),
+                'concept_clusters': {},
+                'concept_cooccurrence': {}
+            }
+            
+            # Group conversations by cluster
+            for i in range(n_clusters):
+                cluster_convs = [conv for j, conv in enumerate(conversations) if cluster_labels[j] == i]
+                cluster_topics = [conv.auto_title or conv.title for conv in cluster_convs]
+                concept_relationships['concept_clusters'][f'cluster_{i}'] = {
+                    'topics': cluster_topics[:5],
+                    'size': len(cluster_convs)
+                }
+            
+            # Calculate concept co-occurrence
+            for i, conv in enumerate(conversations):
+                conv_vector = tfidf_matrix[i].toarray()[0]
+                top_concepts = [feature_names[j] for j in np.argsort(conv_vector)[-5:]]
+                
+                for concept in top_concepts:
+                    if concept not in concept_relationships['concept_cooccurrence']:
+                        concept_relationships['concept_cooccurrence'][concept] = []
+                    concept_relationships['concept_cooccurrence'][concept].append({
+                        'conversation_id': conv.id,
+                        'date': conv.create_date.isoformat(),
+                        'title': conv.auto_title or conv.title
+                    })
+            
+            return concept_relationships
+            
+        except Exception as e:
+            print(f"Error in concept relationship analysis: {e}")
+            return {}
+    
+    def _analyze_goal_achievement(self, conversations: List[Conversation]) -> Dict[str, Any]:
+        """Analyze goal achievement patterns and progress tracking"""
+        if not conversations:
+            return {}
+        
+        # Sort conversations by date
+        sorted_convs = sorted(conversations, key=lambda x: x.create_date)
+        
+        goal_mentions = []
+        achievement_patterns = []
+        
+        for conv in sorted_convs:
+            text = conv.get_full_text().lower()
+            date = conv.create_date
+            
+            # Count goal-related keywords
+            goal_count = sum(text.count(kw) for kw in self.goal_keywords)
+            
+            if goal_count > 0:
+                goal_mentions.append({
+                    'date': date.isoformat(),
+                    'conversation_id': conv.id,
+                    'title': conv.auto_title or conv.title,
+                    'goal_mentions': goal_count,
+                    'summary': conv.summary[:150] + '...' if len(conv.summary) > 150 else conv.summary
+                })
+            
+            # Check for achievement indicators
+            achievement_indicators = [
+                'achieved', 'accomplished', 'completed', 'reached', 'attained',
+                'success', 'milestone', 'breakthrough', 'progress', 'improvement'
+            ]
+            
+            achievement_count = sum(text.count(indicator) for indicator in achievement_indicators)
+            if achievement_count > 0:
+                achievement_patterns.append({
+                    'date': date.isoformat(),
+                    'conversation_id': conv.id,
+                    'title': conv.auto_title or conv.title,
+                    'achievement_score': achievement_count,
+                    'summary': conv.summary[:150] + '...' if len(conv.summary) > 150 else conv.summary
+                })
+        
+        # Calculate goal achievement metrics
+        total_goals = len(goal_mentions)
+        total_achievements = len(achievement_patterns)
+        achievement_rate = total_achievements / max(total_goals, 1)
+        
+        return {
+            'goal_mentions': goal_mentions,
+            'achievement_patterns': achievement_patterns,
+            'total_goals_mentioned': total_goals,
+            'total_achievements': total_achievements,
+            'achievement_rate': achievement_rate,
+            'goal_timeline': [gm['date'] for gm in goal_mentions],
+            'achievement_timeline': [ap['date'] for ap in achievement_patterns]
+        }
     
     def create_sentiment_timeline_chart(self, sentiment_trends: Dict[str, Any], 
                                       output_path: str = None) -> str:

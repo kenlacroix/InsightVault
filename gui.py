@@ -203,6 +203,13 @@ class InsightVaultGUI:
                 [sg.Button('Create Dashboard', key='-CREATE-DASHBOARD-', disabled=True)]
             ], expand_x=True)],
             
+            [sg.Frame('Phase 3 Advanced Features', [
+                [sg.Button('Breakthrough Detection', key='-BREAKTHROUGH-DETECT-', disabled=True),
+                 sg.Button('Writing Style Analysis', key='-WRITING-STYLE-', disabled=True)],
+                [sg.Button('Goal Achievement Tracking', key='-GOAL-TRACKING-', disabled=True),
+                 sg.Button('Concept Relationships', key='-CONCEPT-MAP-', disabled=True)]
+            ], expand_x=True)],
+            
             [sg.Frame('Data Export', [
                 [sg.Button('Export Analytics (CSV)', key='-EXPORT-CSV-', disabled=True),
                  sg.Button('Export Analytics (JSON)', key='-EXPORT-JSON-', disabled=True)],
@@ -277,6 +284,7 @@ class InsightVaultGUI:
             # Analytics Features (NEW)
             elif event in ['-GENERATE-ANALYTICS-', '-REFRESH-ANALYTICS-', '-SENTIMENT-CHART-', 
                           '-EMOTIONAL-CHART-', '-GROWTH-CHART-', '-TOPIC-CHART-', '-CREATE-DASHBOARD-',
+                          '-BREAKTHROUGH-DETECT-', '-WRITING-STYLE-', '-GOAL-TRACKING-', '-CONCEPT-MAP-',
                           '-EXPORT-CSV-', '-EXPORT-JSON-']:
                 self.handle_analytics_events(event, values, window)
         
@@ -550,6 +558,18 @@ License: MIT
         elif event == '-CREATE-DASHBOARD-':
             self.create_dashboard()
         
+        elif event == '-BREAKTHROUGH-DETECT-':
+            self.create_breakthrough_analysis()
+        
+        elif event == '-WRITING-STYLE-':
+            self.create_writing_style_analysis()
+        
+        elif event == '-GOAL-TRACKING-':
+            self.create_goal_tracking_analysis()
+        
+        elif event == '-CONCEPT-MAP-':
+            self.create_concept_relationship_analysis()
+        
         elif event == '-EXPORT-CSV-':
             self.export_analytics('csv', window)
         
@@ -579,6 +599,7 @@ License: MIT
             analytics_buttons = [
                 '-REFRESH-ANALYTICS-', '-SENTIMENT-CHART-', '-EMOTIONAL-CHART-',
                 '-GROWTH-CHART-', '-TOPIC-CHART-', '-CREATE-DASHBOARD-',
+                '-BREAKTHROUGH-DETECT-', '-WRITING-STYLE-', '-GOAL-TRACKING-', '-CONCEPT-MAP-',
                 '-EXPORT-CSV-', '-EXPORT-JSON-'
             ]
             
@@ -744,6 +765,168 @@ License: MIT
                 
         except Exception as e:
             sg.popup_error(f'Error creating analytics dashboard: {str(e)}')
+    
+    def create_breakthrough_analysis(self):
+        """Create breakthrough moments analysis"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            breakthroughs = self.analytics_data.breakthrough_moments
+            
+            if not breakthroughs:
+                sg.popup('No breakthrough moments detected in your conversations.', title='Breakthrough Analysis')
+                return
+            
+            # Create breakthrough report
+            report = "🔍 BREAKTHROUGH MOMENTS DETECTED\n\n"
+            report += f"Total breakthroughs found: {len(breakthroughs)}\n\n"
+            
+            for i, breakthrough in enumerate(breakthroughs[:5], 1):
+                report += f"{i}. {breakthrough['title']}\n"
+                report += f"   Date: {breakthrough['date'][:10]}\n"
+                report += f"   Score: {breakthrough['breakthrough_score']:.1f}\n"
+                report += f"   Keywords: {', '.join(breakthrough['detected_keywords'][:3])}\n"
+                report += f"   Summary: {breakthrough['summary']}\n\n"
+            
+            # Save report
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_path = f"output/breakthrough_analysis_{timestamp}.txt"
+            
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(report)
+            
+            sg.popup(f'Breakthrough analysis completed!\nReport saved to: {report_path}', title='Breakthrough Analysis')
+            
+        except Exception as e:
+            sg.popup_error(f'Error creating breakthrough analysis: {str(e)}')
+    
+    def create_writing_style_analysis(self):
+        """Create writing style evolution analysis"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            style_data = self.analytics_data.writing_style_evolution
+            
+            if not style_data:
+                sg.popup('No writing style data available for analysis.', title='Writing Style Analysis')
+                return
+            
+            # Create writing style report
+            report = "✍️ WRITING STYLE EVOLUTION ANALYSIS\n\n"
+            
+            for period, metrics in style_data.items():
+                report += f"📊 {period.upper()} PERIOD:\n"
+                for metric, value in metrics.items():
+                    if isinstance(value, float):
+                        report += f"   {metric.replace('_', ' ').title()}: {value:.3f}\n"
+                    else:
+                        report += f"   {metric.replace('_', ' ').title()}: {value}\n"
+                report += "\n"
+            
+            # Save report
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_path = f"output/writing_style_analysis_{timestamp}.txt"
+            
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(report)
+            
+            sg.popup(f'Writing style analysis completed!\nReport saved to: {report_path}', title='Writing Style Analysis')
+            
+        except Exception as e:
+            sg.popup_error(f'Error creating writing style analysis: {str(e)}')
+    
+    def create_goal_tracking_analysis(self):
+        """Create goal achievement tracking analysis"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            goal_data = self.analytics_data.goal_achievement
+            
+            if not goal_data:
+                sg.popup('No goal achievement data available for analysis.', title='Goal Tracking Analysis')
+                return
+            
+            # Create goal tracking report
+            report = "🎯 GOAL ACHIEVEMENT TRACKING\n\n"
+            report += f"Total goals mentioned: {goal_data.get('total_goals_mentioned', 0)}\n"
+            report += f"Total achievements: {goal_data.get('total_achievements', 0)}\n"
+            report += f"Achievement rate: {goal_data.get('achievement_rate', 0):.1%}\n\n"
+            
+            if goal_data.get('goal_mentions'):
+                report += "📋 RECENT GOAL MENTIONS:\n"
+                for goal in goal_data['goal_mentions'][:5]:
+                    report += f"   • {goal['title']} ({goal['date'][:10]})\n"
+                report += "\n"
+            
+            if goal_data.get('achievement_patterns'):
+                report += "🏆 RECENT ACHIEVEMENTS:\n"
+                for achievement in goal_data['achievement_patterns'][:5]:
+                    report += f"   • {achievement['title']} ({achievement['date'][:10]})\n"
+                report += "\n"
+            
+            # Save report
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_path = f"output/goal_tracking_analysis_{timestamp}.txt"
+            
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(report)
+            
+            sg.popup(f'Goal tracking analysis completed!\nReport saved to: {report_path}', title='Goal Tracking Analysis')
+            
+        except Exception as e:
+            sg.popup_error(f'Error creating goal tracking analysis: {str(e)}')
+    
+    def create_concept_relationship_analysis(self):
+        """Create concept relationship analysis"""
+        if not self.analytics_data:
+            sg.popup_error('No analytics data available. Please generate analytics first.')
+            return
+        
+        try:
+            concept_data = self.analytics_data.concept_relationships
+            
+            if not concept_data:
+                sg.popup('No concept relationship data available for analysis.', title='Concept Relationship Analysis')
+                return
+            
+            # Create concept relationship report
+            report = "🧠 CONCEPT RELATIONSHIP ANALYSIS\n\n"
+            
+            if concept_data.get('top_concepts'):
+                report += "🔝 TOP CONCEPTS:\n"
+                for i, concept in enumerate(concept_data['top_concepts'][:10], 1):
+                    report += f"   {i}. {concept}\n"
+                report += "\n"
+            
+            if concept_data.get('concept_clusters'):
+                report += "📊 CONCEPT CLUSTERS:\n"
+                for cluster_name, cluster_data in concept_data['concept_clusters'].items():
+                    report += f"   {cluster_name} ({cluster_data['size']} conversations):\n"
+                    for topic in cluster_data['topics'][:3]:
+                        report += f"     • {topic}\n"
+                    report += "\n"
+            
+            # Save report
+            timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+            report_path = f"output/concept_relationship_analysis_{timestamp}.txt"
+            
+            os.makedirs(os.path.dirname(report_path), exist_ok=True)
+            with open(report_path, 'w', encoding='utf-8') as f:
+                f.write(report)
+            
+            sg.popup(f'Concept relationship analysis completed!\nReport saved to: {report_path}', title='Concept Relationship Analysis')
+            
+        except Exception as e:
+            sg.popup_error(f'Error creating concept relationship analysis: {str(e)}')
 
     def export_analytics(self, format_type, window):
         """Export analytics data in specified format"""
