@@ -10,7 +10,7 @@ import os
 import json
 import webbrowser
 from datetime import datetime, timedelta
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Union
 from collections import defaultdict, Counter
 import pandas as pd
 import numpy as np
@@ -41,7 +41,7 @@ class AdvancedDashboard:
         self.analytics_data: Optional[AnalyticsData] = None
         
         # Dashboard state
-        self.app = None
+        self.app: Optional[dash.Dash] = None
         self.server_running = False
         
         # Color themes
@@ -55,6 +55,9 @@ class AdvancedDashboard:
             'dark': '#343a40',
             'success': '#28a745'
         }
+        
+        # Plotly template
+        self.plotly_template = "plotly_white"
         
         # Initialize components
         self._initialize_dashboard()
@@ -153,13 +156,15 @@ class AdvancedDashboard:
     
     def _create_empty_state(self) -> html.Div:
         """Create layout when no data is loaded"""
-        return dbc.Container([
-            dbc.Alert([
-                html.H4("Welcome to InsightVault Advanced Dashboard", className="alert-heading"),
-                html.P("No conversation data loaded. Please load conversations to begin analysis."),
-                html.Hr(),
-                html.P("Use the main application to load your ChatGPT conversations and then access this dashboard.", className="mb-0")
-            ], color="info", className="mt-5")
+        return html.Div([
+            dbc.Container([
+                dbc.Alert([
+                    html.H4("Welcome to InsightVault Advanced Dashboard", className="alert-heading"),
+                    html.P("No conversation data loaded. Please load conversations to begin analysis."),
+                    html.Hr(),
+                    html.P("Use the main application to load your ChatGPT conversations and then access this dashboard.", className="mb-0")
+                ], color="info", className="mt-5")
+            ])
         ])
     
     def _create_header(self) -> dbc.Navbar:
@@ -376,8 +381,18 @@ class AdvancedDashboard:
         
         sentiment_trends = self.analytics_data.sentiment_trends
         months = sorted(sentiment_trends.keys())
-        sentiments = [sentiment_trends[month]['avg_sentiment'] for month in months]
-        counts = [sentiment_trends[month]['conversation_count'] for month in months]
+        
+        # Handle the sentiment trends data structure properly
+        sentiments = []
+        counts = []
+        for month in months:
+            month_data = sentiment_trends[month]
+            if isinstance(month_data, dict):
+                sentiments.append(month_data.get('avg_sentiment', 0))
+                counts.append(month_data.get('conversation_count', 0))
+            else:
+                sentiments.append(0)
+                counts.append(0)
         
         # Create subplot
         fig = make_subplots(
@@ -402,9 +417,9 @@ class AdvancedDashboard:
         )
         
         # Add sentiment zones
-        fig.add_hline(y=0, line_dash="dash", line_color="gray", row=1, col=1)
-        fig.add_hrect(y0=0.1, y1=1, fillcolor="rgba(46, 204, 113, 0.1)", line_width=0, row=1, col=1)
-        fig.add_hrect(y0=-1, y1=-0.1, fillcolor="rgba(231, 76, 60, 0.1)", line_width=0, row=1, col=1)
+        fig.add_hline(y=0, line_dash="dash", line_color="gray", row="1", col="1")
+        fig.add_hrect(y0=0.1, y1=1, fillcolor="rgba(46, 204, 113, 0.1)", line_width=0, row="1", col="1")
+        fig.add_hrect(y0=-1, y1=-0.1, fillcolor="rgba(231, 76, 60, 0.1)", line_width=0, row="1", col="1")
         
         # Activity bars
         fig.add_trace(
@@ -761,6 +776,8 @@ class AdvancedDashboard:
     
     def _setup_callbacks(self):
         """Setup dashboard callbacks"""
+        if not self.app:
+            return
         
         @self.app.callback(
             Output('conversation-data', 'data'),
@@ -886,7 +903,10 @@ class AdvancedDashboard:
                     
                     # Tags sheet
                     if self.analytics_data.top_tags:
-                        tags_data = pd.DataFrame(self.analytics_data.top_tags, columns=['Tag', 'Count'])
+                        # Convert top_tags to proper format for DataFrame
+                        tags_list = [(tag, count) for tag, count in self.analytics_data.top_tags]
+                        tags_data = pd.DataFrame(tags_list)
+                        tags_data.columns = ['Tag', 'Count']
                         tags_data.to_excel(writer, sheet_name='Tags', index=False)
                     
                     # Growth metrics sheet
@@ -956,6 +976,10 @@ class AdvancedDashboard:
             print("No conversations loaded. Please load conversations first.")
             return ""
         
+        if not self.app:
+            print("Dashboard not initialized properly.")
+            return ""
+        
         # Set layout
         self.app.layout = self.create_layout()
         
@@ -980,7 +1004,7 @@ class AdvancedDashboard:
             print(f"Error running dashboard server: {e}")
             return ""
     
-    def create_static_dashboard(self, output_path: str = None) -> str:
+    def create_static_dashboard(self, output_path: Optional[str] = None) -> str:
         """Create a static HTML dashboard file"""
         if not output_path:
             output_path = f"output/static_dashboard_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html"
