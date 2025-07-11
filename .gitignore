@@ -213,3 +213,4 @@ output/*.md
 output/*.csv
 output/*.json
 output/*.html
+data/conversations.db
