@@ -128,6 +128,23 @@ class AdvancedDashboard:
                     ], width=6)
                 ], className="mb-4"),
                 
+                # Fourth row - New Phase 3 features
+                dbc.Row([
+                    dbc.Col([
+                        self._create_breakthrough_moments_card()
+                    ], width=6),
+                    dbc.Col([
+                        self._create_writing_style_card()
+                    ], width=6)
+                ], className="mb-4"),
+                
+                # Fifth row - Goal achievement
+                dbc.Row([
+                    dbc.Col([
+                        self._create_goal_achievement_card()
+                    ], width=12)
+                ], className="mb-4"),
+                
                 # Export section
                 self._create_export_section(),
                 
@@ -263,30 +280,56 @@ class AdvancedDashboard:
         ])
     
     def _create_topic_analysis_card(self) -> dbc.Card:
-        """Create topic analysis and word cloud card"""
+        """Create topic analysis visualization card"""
         return dbc.Card([
             dbc.CardHeader([
-                html.H5("Topic Evolution & Word Cloud", className="mb-0")
+                html.H5("Topic Analysis & Clustering", className="mb-0")
             ]),
             dbc.CardBody([
-                dbc.Tabs([
-                    dbc.Tab(
-                        dcc.Graph(
-                            id="topic-clusters",
-                            figure=self._create_topic_clusters_figure()
-                        ),
-                        label="Topic Clusters",
-                        tab_id="topic-clusters-tab"
-                    ),
-                    dbc.Tab(
-                        html.Div(
-                            id="wordcloud-container",
-                            children=self._create_wordcloud()
-                        ),
-                        label="Word Cloud",
-                        tab_id="wordcloud-tab"
-                    )
-                ], id="topic-tabs", active_tab="topic-clusters-tab")
+                dcc.Graph(
+                    id="topic-clusters",
+                    figure=self._create_topic_clusters_figure()
+                )
+            ])
+        ])
+    
+    def _create_breakthrough_moments_card(self) -> dbc.Card:
+        """Create breakthrough moments visualization card"""
+        return dbc.Card([
+            dbc.CardHeader([
+                html.H5("Breakthrough Moments", className="mb-0"),
+                dbc.Badge("AI Detected", color="success", className="ms-2")
+            ]),
+            dbc.CardBody([
+                html.Div(id="breakthrough-content")
+            ])
+        ])
+    
+    def _create_writing_style_card(self) -> dbc.Card:
+        """Create writing style evolution visualization card"""
+        return dbc.Card([
+            dbc.CardHeader([
+                html.H5("Writing Style Evolution", className="mb-0")
+            ]),
+            dbc.CardBody([
+                dcc.Graph(
+                    id="writing-style-evolution",
+                    figure=self._create_writing_style_figure()
+                )
+            ])
+        ])
+    
+    def _create_goal_achievement_card(self) -> dbc.Card:
+        """Create goal achievement visualization card"""
+        return dbc.Card([
+            dbc.CardHeader([
+                html.H5("Goal Achievement Tracking", className="mb-0")
+            ]),
+            dbc.CardBody([
+                dcc.Graph(
+                    id="goal-achievement",
+                    figure=self._create_goal_achievement_figure()
+                )
             ])
         ])
     
@@ -459,61 +502,183 @@ class AdvancedDashboard:
     
     def _create_topic_clusters_figure(self) -> go.Figure:
         """Create topic clustering visualization"""
-        if not self.conversations:
-            return go.Figure().add_annotation(text="No conversation data available", showarrow=False)
+        if not self.analytics_data or not self.analytics_data.concept_relationships:
+            return self._create_empty_figure("No concept relationship data available")
         
-        # Extract text from conversations
-        texts = [conv.get_full_text() for conv in self.conversations if conv.get_full_text()]
+        concept_data = self.analytics_data.concept_relationships
         
-        if len(texts) < 3:
-            return go.Figure().add_annotation(text="Insufficient data for topic analysis", showarrow=False)
+        # Create network graph for concept relationships
+        fig = go.Figure()
         
-        try:
-            # TF-IDF vectorization
-            vectorizer = TfidfVectorizer(max_features=100, stop_words='english', max_df=0.8, min_df=2)
-            tfidf_matrix = vectorizer.fit_transform(texts)
-            
-            # K-means clustering
-            n_clusters = min(5, len(texts))
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            clusters = kmeans.fit_predict(tfidf_matrix)
-            
-            # UMAP for dimensionality reduction
-            umap_reducer = umap.UMAP(n_components=2, random_state=42)
-            embedding = umap_reducer.fit_transform(tfidf_matrix.toarray())
-            
-            # Create scatter plot
-            fig = go.Figure()
-            
-            colors = px.colors.qualitative.Set1[:n_clusters]
-            
-            for i in range(n_clusters):
-                cluster_mask = clusters == i
-                cluster_dates = [self.conversations[j].create_date.strftime('%Y-%m-%d') for j in range(len(clusters)) if cluster_mask[j]]
-                cluster_titles = [self.conversations[j].title[:50] + "..." if len(self.conversations[j].title) > 50 else self.conversations[j].title 
-                                for j in range(len(clusters)) if cluster_mask[j]]
+        # Add concept nodes
+        concepts = concept_data.get('top_concepts', [])[:15]  # Top 15 concepts
+        
+        for i, concept in enumerate(concepts):
+            fig.add_trace(go.Scatter(
+                x=[i % 5],  # Simple grid layout
+                y=[i // 5],
+                mode='markers+text',
+                marker=dict(size=20, color=self.colors['primary']),
+                text=[concept],
+                textposition="middle center",
+                name=concept,
+                showlegend=False
+            ))
+        
+        fig.update_layout(
+            title="Concept Relationship Map",
+            xaxis=dict(showgrid=False, showticklabels=False, range=[-0.5, 4.5]),
+            yaxis=dict(showgrid=False, showticklabels=False, range=[-0.5, 2.5]),
+            template=self.plotly_template,
+            height=400
+        )
+        
+        return fig
+    
+    def _create_writing_style_figure(self) -> go.Figure:
+        """Create writing style evolution visualization"""
+        if not self.analytics_data or not self.analytics_data.writing_style_evolution:
+            return self._create_empty_figure("No writing style data available")
+        
+        style_data = self.analytics_data.writing_style_evolution
+        periods = list(style_data.keys())
+        
+        # Create radar chart for writing style dimensions
+        fig = go.Figure()
+        
+        # Get style dimensions (excluding technical metrics)
+        style_dimensions = ['complexity', 'emotional_depth', 'analytical', 'reflective', 'concrete', 'abstract']
+        
+        for period in periods:
+            if period in style_data:
+                values = [style_data[period].get(dim, 0) for dim in style_dimensions]
+                # Normalize values for better visualization
+                max_val = max(values) if values else 1
+                normalized_values = [v / max_val for v in values]
                 
-                fig.add_trace(go.Scatter(
-                    x=embedding[cluster_mask, 0],
-                    y=embedding[cluster_mask, 1],
-                    mode='markers',
-                    name=f'Topic Cluster {i+1}',
-                    marker=dict(color=colors[i], size=8),
-                    hovertemplate='<b>Cluster %{fullData.name}</b><br>Date: %{customdata[0]}<br>Title: %{customdata[1]}<extra></extra>',
-                    customdata=list(zip(cluster_dates, cluster_titles))
+                fig.add_trace(go.Scatterpolar(
+                    r=normalized_values,
+                    theta=style_dimensions,
+                    fill='toself',
+                    name=period.capitalize(),
+                    line_color=self.colors.get(period, self.colors['primary'])
                 ))
+        
+        fig.update_layout(
+            polar=dict(
+                radialaxis=dict(
+                    visible=True,
+                    range=[0, 1]
+                )),
+            showlegend=True,
+            title="Writing Style Evolution",
+            template=self.plotly_template,
+            height=400
+        )
+        
+        return fig
+    
+    def _create_goal_achievement_figure(self) -> go.Figure:
+        """Create goal achievement tracking visualization"""
+        if not self.analytics_data or not self.analytics_data.goal_achievement:
+            return self._create_empty_figure("No goal achievement data available")
+        
+        goal_data = self.analytics_data.goal_achievement
+        
+        # Create timeline chart
+        fig = make_subplots(
+            rows=2, cols=1,
+            subplot_titles=('Goal Mentions Timeline', 'Achievement Rate'),
+            vertical_spacing=0.1
+        )
+        
+        # Goal mentions timeline
+        if goal_data.get('goal_mentions'):
+            goal_dates = [gm['date'] for gm in goal_data['goal_mentions']]
+            goal_counts = [gm['goal_mentions'] for gm in goal_data['goal_mentions']]
             
-            fig.update_layout(
-                title="Conversation Topic Clusters",
-                xaxis_title="UMAP Dimension 1",
-                yaxis_title="UMAP Dimension 2",
-                height=400
+            fig.add_trace(
+                go.Scatter(
+                    x=goal_dates,
+                    y=goal_counts,
+                    mode='lines+markers',
+                    name='Goal Mentions',
+                    line=dict(color=self.colors['primary'], width=2),
+                    marker=dict(size=8)
+                ),
+                row=1, col=1
             )
-            
-            return fig
-            
-        except Exception as e:
-            return go.Figure().add_annotation(text=f"Error creating topic analysis: {str(e)}", showarrow=False)
+        
+        # Achievement rate bar
+        achievement_rate = goal_data.get('achievement_rate', 0)
+        fig.add_trace(
+            go.Bar(
+                x=['Achievement Rate'],
+                y=[achievement_rate],
+                name='Success Rate',
+                marker_color=self.colors['success'] if achievement_rate > 0.5 else self.colors['warning']
+            ),
+            row=2, col=1
+        )
+        
+        fig.update_layout(
+            title="Goal Achievement Tracking",
+            template=self.plotly_template,
+            height=500,
+            showlegend=False
+        )
+        
+        fig.update_yaxes(title_text="Goal Mentions", row=1, col=1)
+        fig.update_yaxes(title_text="Achievement Rate", row=2, col=1)
+        
+        return fig
+    
+    def _create_breakthrough_content(self) -> html.Div:
+        """Create breakthrough moments content display"""
+        if not self.analytics_data or not self.analytics_data.breakthrough_moments:
+            return html.Div([
+                html.P("No breakthrough moments detected in your conversations.", 
+                       className="text-muted text-center")
+            ])
+        
+        breakthroughs = self.analytics_data.breakthrough_moments[:5]  # Show top 5
+        
+        breakthrough_cards = []
+        for breakthrough in breakthroughs:
+            card = dbc.Card([
+                dbc.CardBody([
+                    html.H6(breakthrough['title'], className="card-title"),
+                    html.P(f"Date: {breakthrough['date'][:10]}", className="text-muted small"),
+                    html.P(f"Score: {breakthrough['breakthrough_score']:.1f}", 
+                           className="text-success small"),
+                    html.P(breakthrough['summary'], className="card-text small"),
+                    html.Div([
+                        dbc.Badge(kw, color="info", className="me-1") 
+                        for kw in breakthrough['detected_keywords'][:3]
+                    ])
+                ])
+            ], className="mb-2")
+            breakthrough_cards.append(card)
+        
+        return html.Div(breakthrough_cards)
+    
+    def _create_empty_figure(self, message: str) -> go.Figure:
+        """Create an empty figure with a message"""
+        fig = go.Figure()
+        fig.add_annotation(
+            text=message,
+            xref="paper", yref="paper",
+            x=0.5, y=0.5,
+            showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(
+            xaxis=dict(showgrid=False, showticklabels=False),
+            yaxis=dict(showgrid=False, showticklabels=False),
+            template=self.plotly_template,
+            height=400
+        )
+        return fig
     
     def _create_wordcloud(self) -> html.Div:
         """Create word cloud visualization"""
@@ -642,6 +807,14 @@ class AdvancedDashboard:
                 return dbc.Alert(f"Export failed: {str(e)}", color="danger", dismissable=True)
             
             return ""
+        
+        @self.app.callback(
+            Output('breakthrough-content', 'children'),
+            [Input('refresh-btn', 'n_clicks')],
+            prevent_initial_call=False
+        )
+        def update_breakthrough_content(n_clicks):
+            return self._create_breakthrough_content()
     
     def export_pdf_report(self, output_path: str) -> str:
         """Export comprehensive PDF report"""
