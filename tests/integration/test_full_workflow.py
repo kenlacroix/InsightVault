@@ -66,19 +66,24 @@ class TestFullWorkflow:
         mock_client = Mock()
         mock_openai.return_value = mock_client
         
-        mock_response1 = Mock()
-        mock_response1.choices[0].message.content = """
+        # Create properly structured mock response
+        mock_choice1 = Mock()
+        mock_choice1.message.content = """
 AUTO_TITLE: Anxiety and Spiritual Growth Journey
 SUMMARY: A deep conversation exploring the relationship between anxiety, spiritual practice, and personal growth through challenging times.
 TAGS: anxiety, spiritual-growth, mindfulness, coping-strategies, personal-development
 """
+        mock_response1 = Mock()
+        mock_response1.choices = [mock_choice1]
         
-        mock_response2 = Mock()
-        mock_response2.choices[0].message.content = """
+        mock_choice2 = Mock()
+        mock_choice2.message.content = """
 AUTO_TITLE: Self-Compassion Meditation Practice
 SUMMARY: Discussion about developing self-compassion through meditation and treating oneself with kindness during difficult periods.
 TAGS: meditation, self-compassion, mindfulness, healing, daily-practice
 """
+        mock_response2 = Mock()
+        mock_response2.choices = [mock_choice2]
         
         mock_client.chat.completions.create.side_effect = [mock_response1, mock_response2]
         
@@ -145,8 +150,9 @@ TAGS: meditation, self-compassion, mindfulness, healing, daily-practice
         mock_client = Mock()
         mock_openai.return_value = mock_client
         
-        mock_response = Mock()
-        mock_response.choices[0].message.content = """
+        # Create properly structured mock response
+        mock_choice = Mock()
+        mock_choice.message.content = """
 INSIGHT:
 Your spiritual and emotional journey shows remarkable growth over time. In your conversations, there's a clear evolution from seeking external validation to developing internal wisdom and self-compassion. The integration of mindfulness practices with anxiety management demonstrates a holistic approach to personal healing.
 
@@ -171,6 +177,8 @@ Recognition of control patterns showed deepening self-awareness
 Integration of mindfulness with daily challenges demonstrated practical application
 Recent discussions indicate more balanced relationship with anxiety
 """
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
         mock_client.chat.completions.create.return_value = mock_response
         
         # Load and prepare conversations
@@ -226,7 +234,7 @@ Recent discussions indicate more balanced relationship with anxiety
                 assert 'InsightVault - Personal Reflection' in content
                 assert result['question'] in content
                 assert result['insight'] in content
-                assert f"Conversations Analyzed: {result['conversations_analyzed']}" in content
+                assert f"**Conversations Analyzed:** {result['conversations_analyzed']}" in content
                 
                 # Should contain all sections
                 assert '## Reflection' in content
@@ -249,17 +257,19 @@ Recent discussions indicate more balanced relationship with anxiety
         mock_insight_openai.return_value = mock_insight_client
         
         # Mock summarization responses
-        mock_summary_response = Mock()
-        mock_summary_response.choices[0].message.content = """
+        mock_summary_choice = Mock()
+        mock_summary_choice.message.content = """
 AUTO_TITLE: Complete Workflow Test
 SUMMARY: A comprehensive test of the entire InsightVault workflow from conversation loading to insight generation.
 TAGS: testing, workflow, comprehensive, integration, validation
 """
+        mock_summary_response = Mock()
+        mock_summary_response.choices = [mock_summary_choice]
         mock_summary_client.chat.completions.create.return_value = mock_summary_response
         
         # Mock insight generation response
-        mock_insight_response = Mock()
-        mock_insight_response.choices[0].message.content = """
+        mock_insight_choice = Mock()
+        mock_insight_choice.message.content = """
 INSIGHT:
 This comprehensive test demonstrates the complete InsightVault workflow. The system successfully processes conversations from initial loading through AI-powered analysis to final export. Each component works together to provide meaningful insights about personal growth and development.
 
@@ -277,6 +287,8 @@ Summarization added meaningful metadata to conversations
 Insight generation created comprehensive analysis
 Export functionality preserved all generated content
 """
+        mock_insight_response = Mock()
+        mock_insight_response.choices = [mock_insight_choice]
         mock_insight_client.chat.completions.create.return_value = mock_insight_response
         
         # Step 1: Load conversations

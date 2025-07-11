@@ -85,12 +85,15 @@ class TestConversationSummarizer:
         mock_client = Mock()
         mock_openai.return_value = mock_client
         
-        mock_response = Mock()
-        mock_response.choices[0].message.content = """
+        # Create properly structured mock response
+        mock_choice = Mock()
+        mock_choice.message.content = """
 AUTO_TITLE: Career Anxiety and Planning
 SUMMARY: A discussion about career-related anxiety and strategies for managing uncertainty about professional direction.
 TAGS: anxiety, career, planning, uncertainty, professional-development
 """
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
         mock_client.chat.completions.create.return_value = mock_response
         
         summarizer = ConversationSummarizer(self.config_path)
@@ -148,12 +151,15 @@ TAGS: anxiety, career, planning, uncertainty, professional-development
         mock_client = Mock()
         mock_openai.return_value = mock_client
         
-        mock_response = Mock()
-        mock_response.choices[0].message.content = """
+        # Create properly structured mock response
+        mock_choice = Mock()
+        mock_choice.message.content = """
 AUTO_TITLE: Fresh Analysis
 SUMMARY: This is a fresh analysis bypassing cache.
 TAGS: fresh, analysis, bypass
 """
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
         mock_client.chat.completions.create.return_value = mock_response
         
         summarizer = ConversationSummarizer(self.config_path)
@@ -180,12 +186,15 @@ TAGS: fresh, analysis, bypass
         mock_client = Mock()
         mock_openai.return_value = mock_client
         
-        mock_response = Mock()
-        mock_response.choices[0].message.content = """
+        # Create properly structured mock response
+        mock_choice = Mock()
+        mock_choice.message.content = """
 AUTO_TITLE: Long Conversation Summary
 SUMMARY: A summary of a very long conversation that was truncated.
 TAGS: long, conversation, truncated
 """
+        mock_response = Mock()
+        mock_response.choices = [mock_choice]
         mock_client.chat.completions.create.return_value = mock_response
         
         # Create a conversation with very long content
@@ -286,19 +295,23 @@ SUMMARY: Only title and summary provided.
         mock_openai.return_value = mock_client
         
         # Mock successful API responses
-        mock_response1 = Mock()
-        mock_response1.choices[0].message.content = """
+        mock_choice1 = Mock()
+        mock_choice1.message.content = """
 AUTO_TITLE: First Conversation
 SUMMARY: First summary
 TAGS: first, test
 """
+        mock_response1 = Mock()
+        mock_response1.choices = [mock_choice1]
         
-        mock_response2 = Mock()
-        mock_response2.choices[0].message.content = """
+        mock_choice2 = Mock()
+        mock_choice2.message.content = """
 AUTO_TITLE: Second Conversation  
 SUMMARY: Second summary
 TAGS: second, test
 """
+        mock_response2 = Mock()
+        mock_response2.choices = [mock_choice2]
         
         mock_client.chat.completions.create.side_effect = [mock_response1, mock_response2]
         
@@ -465,7 +478,9 @@ class TestConversationSummarizerAPI:
     def test_create_summary_prompt(self):
         """Test the prompt creation for GPT"""
         with patch('summarizer.OpenAI'):
-            summarizer = ConversationSummarizer()
+            # Use the test config file instead of default
+            config_path = os.path.join(os.path.dirname(__file__), '..', 'fixtures', 'test_config.json')
+            summarizer = ConversationSummarizer(config_path)
             
             conversation_text = "USER: I'm feeling anxious about work.\nASSISTANT: Can you tell me more about what's causing the anxiety?"
             original_title = "Work Anxiety"

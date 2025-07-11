@@ -13,3 +13,4 @@ numpy>=1.24.0
 scikit-learn>=1.2.0
 fpdf2>=2.7.0
 reportlab>=3.6.0
+textblob>=0.17.0

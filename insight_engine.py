@@ -67,7 +67,7 @@ class InsightEngine:
             # Score based on tags matching query
             for tag in conv.tags:
                 for word in query_words:
-                    if word in tag.lower():
+                    if len(word) > 2 and word in tag.lower():  # Require minimum 3 chars for tag matching
                         score += 5
             
             # Score based on growth-related keywords
@@ -78,7 +78,7 @@ class InsightEngine:
             # Score based on title/auto_title relevance
             title_text = (conv.title + ' ' + conv.auto_title).lower()
             for word in query_words:
-                if word in title_text:
+                if len(word) > 2 and word in title_text:  # Require minimum 3 chars for title matching
                     score += 3
             
             if score > 0:
@@ -230,43 +230,54 @@ Remember to be compassionate, specific, and insightful. Focus on growth, healing
             'timeline_insights': []
         }
         
-        sections = response_text.split('\n\n')
+        # Split on section headers and process each section
+        lines = response_text.split('\n')
         current_section = None
         
-        for section in sections:
-            section = section.strip()
+        for line in lines:
+            line = line.strip()
             
-            if section.startswith('INSIGHT:'):
+            if line.startswith('INSIGHT:'):
                 current_section = 'insight'
-                result['insight'] = section.replace('INSIGHT:', '').strip()
-            elif section.startswith('QUOTES:'):
+                content = line.replace('INSIGHT:', '').strip()
+                if content:
+                    result['insight'] = content
+            elif line.startswith('QUOTES:'):
                 current_section = 'quotes'
-            elif section.startswith('THEMES:'):
-                current_section = 'themes'
-            elif section.startswith('TIMELINE_INSIGHTS:'):
+            elif line.startswith('THEMES:'):
+                current_section = 'themes'  
+            elif line.startswith('TIMELINE_INSIGHTS:'):
                 current_section = 'timeline_insights'
-            elif current_section and section:
+            elif current_section and line:
                 if current_section == 'insight':
-                    result['insight'] += '\n\n' + section
+                    if result['insight']:
+                        result['insight'] += '\n' + line
+                    else:
+                        result['insight'] = line
                 elif current_section == 'quotes':
-                    # Parse quotes (handle various formats)
-                    lines = section.split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and (line.startswith('-') or line.startswith('•') or '"' in line):
-                            result['quotes'].append(line.lstrip('- •').strip())
+                    # Parse quotes - handle different formats
+                    if line.startswith('-') or line.startswith('•') or '"' in line:
+                        clean_quote = line.lstrip('- •').strip()
+                        if clean_quote:
+                            result['quotes'].append(clean_quote)
                 elif current_section == 'themes':
-                    lines = section.split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and (line.startswith('-') or line.startswith('•')):
-                            result['themes'].append(line.lstrip('- •').strip())
+                    # Parse themes
+                    if line.startswith('-') or line.startswith('•'):
+                        clean_theme = line.lstrip('- •').strip()
+                        if clean_theme:
+                            result['themes'].append(clean_theme)
+                    elif line and not line.startswith(('INSIGHT:', 'QUOTES:', 'TIMELINE_INSIGHTS:')):
+                        # Handle themes without bullet points
+                        result['themes'].append(line)
                 elif current_section == 'timeline_insights':
-                    lines = section.split('\n')
-                    for line in lines:
-                        line = line.strip()
-                        if line and (line.startswith('-') or line.startswith('•')):
-                            result['timeline_insights'].append(line.lstrip('- •').strip())
+                    # Parse timeline insights
+                    if line.startswith('-') or line.startswith('•'):
+                        clean_insight = line.lstrip('- •').strip()
+                        if clean_insight:
+                            result['timeline_insights'].append(clean_insight)
+                    elif line and not line.startswith(('INSIGHT:', 'QUOTES:', 'THEMES:')):
+                        # Handle timeline insights without bullet points
+                        result['timeline_insights'].append(line)
         
         return result
     
