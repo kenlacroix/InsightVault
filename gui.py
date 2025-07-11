@@ -8,9 +8,12 @@ import threading
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import PySimpleGUI as sg
+import time
 from chat_parser import ChatParser, Conversation
 from summarizer import ConversationSummarizer
 from insight_engine import InsightEngine, SAMPLE_QUESTIONS
+from performance_optimizer import paginated_loader, background_processor, memory_optimizer
+from search_engine import search_manager, SearchFilter
 
 
 class InsightVaultGUI:
@@ -20,7 +23,7 @@ class InsightVaultGUI:
         self.parser = ChatParser()
         self.summarizer = None
         self.insight_engine = None
-        self.analytics_engine = None  # Add analytics engine
+        self.analytics_engine = None
         self.current_conversations: List[Conversation] = []
         self.filtered_conversations: List[Conversation] = []
         
@@ -30,6 +33,12 @@ class InsightVaultGUI:
         
         # Analytics state
         self.analytics_data = None
+        
+        # Phase 4: Performance optimization state
+        self.current_page = 0
+        self.total_pages = 0
+        self.search_results = []
+        self.is_loading = False
         
         # Initialize AI components if config exists
         self._initialize_ai_components()
@@ -80,7 +89,14 @@ class InsightVaultGUI:
                 enable_events=True,
                 horizontal_scroll=True
             )],
-            [sg.Text('Total: 0 conversations', key='-CONV_COUNT-')]
+            [sg.Text('Total: 0 conversations', key='-CONV_COUNT-')],
+            # Phase 4: Pagination controls
+            [sg.Button('← Previous', key='-PREV_PAGE-', disabled=True),
+             sg.Text('Page 1/1', key='-PAGE_INFO-'),
+             sg.Button('Next →', key='-NEXT_PAGE-', disabled=True)],
+            [sg.Text('Performance:', font=('Arial', 9, 'bold'))],
+            [sg.Text('Memory: 0MB', key='-MEMORY_INFO-', size=(20, 1)),
+             sg.Text('Search: 0ms', key='-SEARCH_TIME-', size=(15, 1))]
         ]
         
         # Conversation details column
@@ -287,6 +303,10 @@ class InsightVaultGUI:
                           '-BREAKTHROUGH-DETECT-', '-WRITING-STYLE-', '-GOAL-TRACKING-', '-CONCEPT-MAP-',
                           '-EXPORT-CSV-', '-EXPORT-JSON-']:
                 self.handle_analytics_events(event, values, window)
+            
+            # Phase 4: Performance features
+            elif event in ['-PREV_PAGE-', '-NEXT_PAGE-']:
+                self.handle_pagination_events(event, window)
         
         window.close()
     
@@ -950,17 +970,70 @@ License: MIT
 
     # Bridge methods for new interface compatibility
     def load_conversations(self, file_path, window):
-        """Load conversations from file"""
-        if file_path:
-            self._handle_load_conversations(window)
+        """Load conversations from file using paginated loader"""
+        if file_path and os.path.exists(file_path):
+            window['-STATUS-'].update('Loading conversations...')
+            window.refresh()
+            
+            # Use paginated loader for better performance
+            if paginated_loader.load_conversations_from_file(file_path):
+                self.current_page = 0
+                conversations, page_info = paginated_loader.load_page(0)
+                self.current_conversations = conversations
+                self.total_pages = page_info.total_pages
+                
+                # Update conversation list
+                self._update_conversation_list(window)
+                
+                # Update status with performance info
+                stats = paginated_loader.get_stats()
+                memory_stats = memory_optimizer.get_memory_stats()
+                window['-STATUS-'].update(
+                    f'Loaded {len(self.current_conversations)} conversations '
+                    f'(Page 1/{self.total_pages}) | '
+                    f'Memory: {memory_stats["rss"] // (1024*1024)}MB'
+                )
+            else:
+                window['-STATUS-'].update('Error loading conversations')
 
     def show_conversation_content(self, selection, window):
         """Show content of selected conversations"""
         self._handle_conversation_selection(window, selection)
 
     def search_conversations(self, query, window):
-        """Search conversations"""
-        self._handle_search(window, query)
+        """Search conversations using optimized search engine"""
+        if not query.strip():
+            return
+        
+        window['-STATUS-'].update('Searching...')
+        window.refresh()
+        
+        try:
+            # Use search manager for fast search
+            search_results = search_manager.search(query, limit=50)
+            
+            if search_results:
+                self.search_results = search_results
+                conversations = [result.conversation for result in search_results]
+                self.current_conversations = conversations
+                
+                # Update conversation list with search results
+                conv_list = []
+                for i, result in enumerate(search_results):
+                    score_text = f"[{result.score:.1f}] "
+                    conv_list.append(f"{score_text}{result.conversation.title}")
+                
+                window['-CONVERSATION-LIST-'].update(values=conv_list)
+                window['-CONV-COUNT-'].update(f'Found {len(search_results)} results')
+                window['-STATUS-'].update(f'Search completed: {len(search_results)} results found')
+            else:
+                window['-CONVERSATION-LIST-'].update(values=[])
+                window['-CONV-COUNT-'].update('No results found')
+                window['-STATUS-'].update('Search completed: No results found')
+                
+        except Exception as e:
+            window['-STATUS-'].update(f'Search error: {str(e)}')
+            sg.popup_error(f'Search error: {str(e)}')
 
     def filter_conversations(self, start_date, end_date, window):
         """Filter conversations by date range"""
@@ -979,6 +1052,45 @@ License: MIT
             self._handle_generate_insight(window, question)
         else:
             sg.popup('AI event handling not yet fully implemented')
+    
+    def handle_pagination_events(self, event, window):
+        """Handle pagination events"""
+        if event == '-PREV_PAGE-':
+            if self.current_page > 0:
+                self.current_page -= 1
+                self._load_page(window)
+        elif event == '-NEXT_PAGE-':
+            if self.current_page < self.total_pages - 1:
+                self.current_page += 1
+                self._load_page(window)
+    
+    def _load_page(self, window):
+        """Load a specific page of conversations"""
+        window['-STATUS-'].update(f'Loading page {self.current_page + 1}...')
+        window.refresh()
+        
+        try:
+            conversations, page_info = paginated_loader.load_page(self.current_page)
+            self.current_conversations = conversations
+            
+            # Update conversation list
+            conv_list = [conv.title for conv in conversations]
+            window['-CONVERSATION-LIST-'].update(values=conv_list)
+            
+            # Update pagination controls
+            window['-PAGE_INFO-'].update(f'Page {page_info.page_number + 1}/{page_info.total_pages}')
+            window['-PREV_PAGE-'].update(disabled=not page_info.has_previous)
+            window['-NEXT_PAGE-'].update(disabled=not page_info.has_next)
+            window['-CONV-COUNT-'].update(f'Page {page_info.page_number + 1}: {len(conversations)} conversations')
+            
+            # Update performance info
+            memory_stats = memory_optimizer.get_memory_stats()
+            window['-MEMORY_INFO-'].update(f'Memory: {memory_stats["rss"] // (1024*1024)}MB')
+            window['-STATUS-'].update(f'Page {page_info.page_number + 1} loaded successfully')
+            
+        except Exception as e:
+            window['-STATUS-'].update(f'Error loading page: {str(e)}')
+            sg.popup_error(f'Error loading page: {str(e)}')
 
 
 def main():
