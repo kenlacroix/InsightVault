@@ -1,0 +1,66 @@
+[
+    {
+        "id": "sample-conversation-1",
+        "title": "Sample Conversation",
+        "create_time": 1704067200.0,
+        "update_time": 1704067800.0,
+        "mapping": {
+            "message-1": {
+                "id": "message-1",
+                "message": {
+                    "id": "message-1",
+                    "author": {"role": "user"},
+                    "create_time": 1704067200.0,
+                    "content": {
+                        "content_type": "text",
+                        "parts": ["I've been feeling anxious about my spiritual journey lately. Sometimes I wonder if I'm making real progress or just going in circles."]
+                    }
+                }
+            },
+            "message-2": {
+                "id": "message-2",
+                "message": {
+                    "id": "message-2",
+                    "author": {"role": "assistant"},
+                    "create_time": 1704067400.0,
+                    "content": {
+                        "content_type": "text",
+                        "parts": ["It's completely natural to have these feelings on a spiritual journey. The fact that you're questioning and reflecting shows you're engaged in the process. Progress in spiritual growth isn't always linear - sometimes what feels like going in circles is actually spiraling upward, revisiting themes at deeper levels."]
+                    }
+                }
+            }
+        }
+    },
+    {
+        "id": "sample-conversation-2", 
+        "title": "Another Sample",
+        "create_time": 1704153600.0,
+        "update_time": 1704154200.0,
+        "mapping": {
+            "message-3": {
+                "id": "message-3",
+                "message": {
+                    "id": "message-3",
+                    "author": {"role": "user"},
+                    "create_time": 1704153600.0,
+                    "content": {
+                        "content_type": "text",
+                        "parts": ["I've been working on healing childhood trauma and I'm noticing patterns in my relationships. How do I break these cycles?"]
+                    }
+                }
+            },
+            "message-4": {
+                "id": "message-4",
+                "message": {
+                    "id": "message-4",
+                    "author": {"role": "assistant"},
+                    "create_time": 1704153800.0,
+                    "content": {
+                        "content_type": "text",
+                        "parts": ["Recognizing patterns is a huge first step in healing. Breaking cycles often involves conscious awareness (which you have), self-compassion, and sometimes professional support. Consider what specific patterns you're noticing and practice interrupting them with new responses."]
+                    }
+                }
+            }
+        }
+    }
+]
