@@ -982,34 +982,37 @@ async def send_message_stream(
                     return
             
             # Stage 1: Checking cache
-            yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '[SEARCH]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '🔍'})}\n\n"
             await asyncio.sleep(0.5)
             
             # Stage 2: Analyzing conversations
-            yield f"data: {json.dumps({'stage': 'analysis', 'status': 'Analyzing your conversations...', 'icon': '[ANALYZE]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'analysis', 'status': 'Analyzing your conversations...', 'icon': '📊'})}\n\n"
             await asyncio.sleep(1)
             
             # Stage 3: Preparing context
-            yield f"data: {json.dumps({'stage': 'context', 'status': 'Preparing conversation context...', 'icon': '[BRAIN]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'context', 'status': 'Preparing conversation context...', 'icon': '🧠'})}\n\n"
             await asyncio.sleep(0.8)
             
             # Stage 4: Contacting OpenAI
-            yield f"data: {json.dumps({'stage': 'openai', 'status': 'Contacting OpenAI API...', 'icon': '[AI]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'openai', 'status': 'Contacting OpenAI API...', 'icon': '🤖'})}\n\n"
             await asyncio.sleep(1.2)
             
             # Stage 5: Generating response
-            yield f"data: {json.dumps({'stage': 'generation', 'status': 'Crafting your personalized response...', 'icon': '[MAGIC]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'generation', 'status': 'Crafting your personalized response...', 'icon': '✨'})}\n\n"
             await asyncio.sleep(1.5)
             
             # Stage 6: Processing and formatting
-            yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '[LIGHTBULB]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '💡'})}\n\n"
             await asyncio.sleep(0.8)
             
-            # Generate the actual response
+            # Yield a status before calling OpenAI (blocking call)
+            yield f"data: {json.dumps({'stage': 'openai_wait', 'status': 'Waiting for OpenAI API response...', 'icon': '🤖'})}\n\n"
+            
+            # Generate the actual response (blocking)
             ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
             
             # Final response
-            yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '[SUCCESS]'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '✅'})}\n\n"
             
         except Exception as e:
             yield f"data: {json.dumps({'error': f'Error generating response: {str(e)}'})}\n\n"

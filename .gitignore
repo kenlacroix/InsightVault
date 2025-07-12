@@ -219,3 +219,4 @@ data/conversations.db
 /frontend/.next
 /backend/alembic
 backend/insightvault.db
+/backend/data/chat_cache
