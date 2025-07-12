@@ -22,14 +22,14 @@ async def initialize_database():
     try:
         # Initialize async database
         await init_db()
-        print("✅ Database tables created successfully!")
+        print("[SUCCESS] Database tables created successfully!")
         
         # Close database connections
         await close_db()
-        print("✅ Database initialization complete!")
+        print("[SUCCESS] Database initialization complete!")
         
     except Exception as e:
-        print(f"❌ Error initializing database: {e}")
+        print(f"[ERROR] Error initializing database: {e}")
         return False
     
     return True
@@ -37,7 +37,7 @@ async def initialize_database():
 if __name__ == "__main__":
     success = asyncio.run(initialize_database())
     if success:
-        print("\n🎉 Database is ready! You can now start the backend server.")
+        print("\n[SUCCESS] Database is ready! You can now start the backend server.")
     else:
-        print("\n💥 Database initialization failed. Please check the error above.")
+        print("\n[ERROR] Database initialization failed. Please check the error above.")
         sys.exit(1) 
