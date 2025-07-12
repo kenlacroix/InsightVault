@@ -3,6 +3,7 @@
 import React, { useState, useEffect, useRef } from "react";
 import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
+import { AIProcessingIndicator } from "./AIProcessingIndicator";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Message {
@@ -10,6 +11,12 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
+}
+
+interface ProcessingStage {
+  stage: string;
+  status: string;
+  icon: string;
 }
 
 interface ChatInterfaceProps {
@@ -22,6 +29,9 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [currentStage, setCurrentStage] = useState<
+    ProcessingStage | undefined
+  >();
   const [setInputValue, setSetInputValue] = useState<React.Dispatch<
     React.SetStateAction<string>
   > | null>(null);
@@ -71,11 +81,23 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
       timestamp: new Date().toISOString(),
     };
 
+    // Optimistic update - add user message immediately
     setMessages((prev) => [...prev, userMessage]);
     setIsLoading(true);
+    setCurrentStage(undefined);
+
+    // Add a temporary loading message
+    const loadingMessage: Message = {
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: "",
+      timestamp: new Date().toISOString(),
+    };
+    setMessages((prev) => [...prev, loadingMessage]);
 
     try {
-      const response = await fetch(`${API_BASE_URL}/chat/send`, {
+      // Use streaming endpoint for real-time status updates
+      const response = await fetch(`${API_BASE_URL}/chat/send-stream`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
@@ -90,30 +112,79 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
         throw new Error("Failed to send message");
       }
 
-      const data = await response.json();
+      const reader = response.body?.getReader();
+      if (!reader) {
+        throw new Error("No response body");
+      }
+
+      const decoder = new TextDecoder();
+      let finalMessage = "";
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+
+              if (data.error) {
+                throw new Error(data.error);
+              }
+
+              if (data.stage) {
+                setCurrentStage({
+                  stage: data.stage,
+                  status: data.status,
+                  icon: data.icon,
+                });
+              }
+
+              if (data.message) {
+                finalMessage = data.message;
+              }
+            } catch (e) {
+              console.error("Error parsing streaming data:", e);
+            }
+          }
+        }
+      }
 
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         role: "assistant",
-        content: data.message,
-        timestamp: data.timestamp,
+        content: finalMessage,
+        timestamp: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, assistantMessage]);
+      // Replace loading message with actual response
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => msg.id !== loadingMessage.id);
+        return [...filtered, assistantMessage];
+      });
     } catch (error) {
       console.error("Error sending message:", error);
 
       const errorMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: (Date.now() + 2).toString(),
         role: "assistant",
         content:
           "Sorry, I encountered an error while processing your request. Please try again.",
         timestamp: new Date().toISOString(),
       };
 
-      setMessages((prev) => [...prev, errorMessage]);
+      // Replace loading message with error
+      setMessages((prev) => {
+        const filtered = prev.filter((msg) => msg.id !== loadingMessage.id);
+        return [...filtered, errorMessage];
+      });
     } finally {
       setIsLoading(false);
+      setCurrentStage(undefined);
     }
   };
 
@@ -160,15 +231,12 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
           />
         ))}
 
-        {/* Loading message */}
-        {isLoading && (
-          <ChatMessage
-            role="assistant"
-            content=""
-            timestamp={new Date().toISOString()}
-            isLoading={true}
-          />
-        )}
+        {/* AI Processing Indicator */}
+        <AIProcessingIndicator
+          isVisible={isLoading}
+          currentStage={currentStage}
+          className="mx-4"
+        />
 
         <div ref={messagesEndRef} />
       </div>

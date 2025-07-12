@@ -209,6 +209,7 @@ __marimo__/
 config.json
 data/cache/*
 data/analytics_cache/*
+data/chat_cache/*
 output/*.md
 output/*.csv
 output/*.json

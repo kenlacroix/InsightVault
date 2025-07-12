@@ -4,7 +4,6 @@ interface ChatMessageProps {
   role: "user" | "assistant";
   content: string;
   timestamp: string;
-  isLoading?: boolean;
   onFollowUpClick?: (question: string) => void;
 }
 
@@ -12,7 +11,6 @@ export function ChatMessage({
   role,
   content,
   timestamp,
-  isLoading = false,
   onFollowUpClick,
 }: ChatMessageProps) {
   const isUser = role === "user";
@@ -57,35 +55,26 @@ export function ChatMessage({
             isUser ? "bg-blue-600 text-white" : "bg-gray-100 text-gray-900"
           }`}
         >
-          {isLoading ? (
-            <div className="flex items-center space-x-2">
-              <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-current"></div>
-              <span>AI is thinking...</span>
-            </div>
-          ) : (
-            <>
-              <div className="whitespace-pre-wrap">{mainContent}</div>
+          <div className="whitespace-pre-wrap">{mainContent}</div>
 
-              {/* Follow-up prompts */}
-              {followUps.length > 0 && (
-                <div className="mt-4 pt-3 border-t border-gray-200">
-                  <div className="text-sm font-medium text-gray-700 mb-2">
-                    💡 Follow-up Questions:
-                  </div>
-                  <div className="space-y-2">
-                    {followUps.map((question, index) => (
-                      <button
-                        key={index}
-                        onClick={() => onFollowUpClick?.(question)}
-                        className="block w-full text-left text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors duration-200"
-                      >
-                        {question}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </>
+          {/* Follow-up prompts */}
+          {followUps.length > 0 && (
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <div className="text-sm font-medium text-gray-700 mb-2">
+                💡 Follow-up Questions:
+              </div>
+              <div className="space-y-2">
+                {followUps.map((question, index) => (
+                  <button
+                    key={index}
+                    onClick={() => onFollowUpClick?.(question)}
+                    className="block w-full text-left text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors duration-200"
+                  >
+                    {question}
+                  </button>
+                ))}
+              </div>
+            </div>
           )}
         </div>
         <div

@@ -1234,23 +1234,38 @@ License: MIT
             sg.popup_error(f'Error loading page: {str(e)}')
 
     def handle_chat_input(self, input_text, window):
-        """Handle user input in the ChatGPT chat tab"""
+        """Handle user input in the ChatGPT chat tab with processing status updates"""
         if not input_text.strip():
             return
         
         window['-CHAT_INPUT-'].update('') # Clear input field
+        
+        # Add user message
         window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + f"You: {input_text}\n")
-        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: Thinking...\n")
-        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: ") # Indicate thinking
         window.refresh()
 
-        # Simulate AI thinking
-        time.sleep(1) # Simulate network delay
+        # Show processing status with lightbulb indicator
+        processing_stages = [
+            ("🔍 Checking cache...", 0.5),
+            ("📊 Analyzing conversations...", 1.0),
+            ("🧠 Preparing context...", 0.8),
+            ("🤖 Contacting OpenAI...", 1.2),
+            ("✨ Crafting response...", 1.5),
+            ("💡 Adding insights...", 0.8),
+        ]
+
+        # Display processing indicator
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "💡 AI Processing:\n")
+        
+        for status, delay in processing_stages:
+            window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + f"  {status}\n")
+            window.refresh()
+            time.sleep(delay)
 
         # In a real application, you would send this to your backend
         # For now, we'll just append a placeholder response
-        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "This is a placeholder response.\n")
-        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: ") # Indicate thinking
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "✅ Response ready!\n")
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: This is a placeholder response. In the full implementation, this would be the actual AI-generated response based on your conversation analysis.\n\n")
         window.refresh()
 
     def handle_analyze_conversations(self, window):
