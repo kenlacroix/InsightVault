@@ -20,42 +20,59 @@ A modern web application that helps you explore and reflect on your personal gro
 
 ## 🚀 Quick Start
 
-### Option 1: Unified Launcher (Recommended)
+### Option 1: Automated Setup (Recommended)
 
 ```bash
 # Clone the repository
 git clone https://github.com/your-username/InsightVault.git
 cd InsightVault
 
-# Start with auto-install
-python insightvault.py start --auto-install
+# Run the setup script
+python setup.py
+
+# Start the application
+python insightvault.py
 ```
 
-The launcher will:
+The setup script will:
 
-- ✅ Check system requirements
-- ✅ Install dependencies automatically
-- ✅ Start both backend and frontend servers
-- ✅ Open the application in your browser
+- ✅ Check system requirements (Python 3.8+, Node.js, npm)
+- ✅ Create necessary directories and configuration files
+- ✅ Install backend and frontend dependencies
+- ✅ Initialize the database automatically
+- ✅ Set up default configuration
 
 ### Option 2: Manual Setup
 
 ```bash
-# 1. Install backend dependencies
-pip install -r backend/requirements.txt
+# 1. Install backend dependencies (use minimal requirements on Windows)
+cd backend
+pip install -r requirements-minimal.txt  # or requirements.txt
 
 # 2. Install frontend dependencies
-cd frontend
+cd ../frontend
 npm install
 cd ..
 
-# 3. Configure OpenAI API key
+# 3. Initialize the database
+cd backend
+python init_db.py
+cd ..
+
+# 4. Configure OpenAI API key
 cp config.json.example config.json
 # Edit config.json with your OpenAI API key
 
-# 4. Start the application
-python insightvault.py start
+# 5. Start the application
+python insightvault.py
 ```
+
+### First-Time Setup Notes
+
+- **Database**: Tables are created automatically on first startup
+- **Configuration**: Update `config.json` with your OpenAI API key before using AI features
+- **Branch Merges**: If you encounter database errors after merging branches, run `python backend/init_db.py`
+- **Windows Users**: Use `requirements-minimal.txt` to avoid Rust compilation issues
 
 ## 🔑 Getting Your OpenAI API Key
 

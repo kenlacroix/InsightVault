@@ -520,6 +520,23 @@ class InsightVaultLauncher:
         self.log("Starting backend server...", "INFO", "BACKEND")
         
         try:
+            # Initialize database if needed
+            self.log("Checking database initialization...", "INFO", "BACKEND")
+            try:
+                if self.is_windows:
+                    init_cmd = f"{sys.executable} init_db.py"
+                    result = subprocess.run(init_cmd, cwd="backend", shell=True, capture_output=True, text=True, timeout=30)
+                else:
+                    init_cmd = ["python3", "init_db.py"]
+                    result = subprocess.run(init_cmd, cwd="backend", capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    self.log("Database initialized successfully", "SUCCESS", "BACKEND")
+                else:
+                    self.log(f"Database initialization warning: {result.stderr}", "WARNING", "BACKEND")
+            except Exception as e:
+                self.log(f"Database initialization check failed: {e}", "WARNING", "BACKEND")
+            
             if self.is_windows:
                 cmd = f"{sys.executable} -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
                 self.backend_process = subprocess.Popen(
