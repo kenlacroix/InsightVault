@@ -12,7 +12,7 @@ import time
 from chat_parser import ChatParser, Conversation
 from summarizer import ConversationSummarizer
 from insight_engine import InsightEngine, SAMPLE_QUESTIONS
-from performance_optimizer import paginated_loader, background_processor, memory_optimizer
+from performance_optimizer import PerformanceOptimizer, BackgroundProcessor
 from search_engine import search_manager, SearchFilter
 
 
