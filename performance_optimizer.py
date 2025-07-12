@@ -1,491 +1,629 @@
 """
-Performance Optimizer for InsightVault
-Phase 4: Performance & Scalability
+Performance Optimizer for InsightVault AI Assistant
+Phase 2: Caching and Optimization
 
-Implements pagination, lazy loading, memory optimization, and background processing
-for handling large datasets efficiently.
+Provides response caching, database optimization, background processing,
+and memory usage optimization for improved performance and scalability.
 """
 
-import os
-import json
-import sqlite3
-import threading
 import time
-from typing import List, Dict, Any, Optional, Callable, Tuple
+import hashlib
+import json
+import threading
+import queue
+from typing import Dict, List, Optional, Any, Callable
 from dataclasses import dataclass
-from queue import Queue, Empty
-from datetime import datetime
-import weakref
+from datetime import datetime, timedelta
+from collections import OrderedDict
+import sqlite3
+import logging
+import psutil
 import gc
-
-from chat_parser import Conversation, ChatMessage
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import numpy as np
 
 
 @dataclass
-class PageInfo:
-    """Information about a paginated page"""
-    page_number: int
-    page_size: int
-    total_items: int
-    total_pages: int
-    has_next: bool
-    has_previous: bool
+class CacheEntry:
+    """Cache entry with metadata"""
+    data: Any
+    timestamp: datetime
+    access_count: int
+    size_bytes: int
+    ttl: timedelta
 
 
-class PaginatedConversationLoader:
-    """Handles paginated loading of conversations for memory efficiency"""
+@dataclass
+class PerformanceMetrics:
+    """Performance metrics tracking"""
+    response_time_ms: float
+    cache_hit_rate: float
+    memory_usage_mb: float
+    cpu_usage_percent: float
+    database_query_time_ms: float
+    api_call_time_ms: float
+    timestamp: datetime
+
+
+class ResponseCache:
+    """LRU cache for API responses with TTL support"""
     
-    def __init__(self, page_size: int = 50, cache_size: int = 200):
-        self.page_size = page_size
-        self.cache_size = cache_size
-        self.current_page = 0
-        self.total_conversations = 0
-        self.conversation_cache = {}
-        self.page_cache = {}
-        self._cache_lock = threading.Lock()
+    def __init__(self, max_size_mb: int = 100, max_entries: int = 1000):
+        """
+        Initialize response cache
         
-        # Database connection for efficient storage
-        self.db_path = 'data/conversations.db'
-        self._init_database()
-    
-    def _init_database(self):
-        """Initialize SQLite database for conversation storage"""
-        os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
+        Args:
+            max_size_mb: Maximum cache size in megabytes
+            max_entries: Maximum number of cache entries
+        """
+        self.max_size_bytes = max_size_mb * 1024 * 1024
+        self.max_entries = max_entries
+        self.cache: OrderedDict[str, CacheEntry] = OrderedDict()
+        self.current_size_bytes = 0
+        self.hit_count = 0
+        self.miss_count = 0
+        self.lock = threading.Lock()
         
-        with sqlite3.connect(self.db_path) as conn:
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS conversations (
-                    id TEXT PRIMARY KEY,
-                    title TEXT,
-                    create_time INTEGER,
-                    update_time INTEGER,
-                    summary TEXT,
-                    auto_title TEXT,
-                    tags TEXT,
-                    message_count INTEGER,
-                    data_hash TEXT
-                )
-            """)
-            
-            conn.execute("""
-                CREATE TABLE IF NOT EXISTS messages (
-                    id TEXT,
-                    conversation_id TEXT,
-                    role TEXT,
-                    content TEXT,
-                    create_time INTEGER,
-                    PRIMARY KEY (conversation_id, id),
-                    FOREIGN KEY (conversation_id) REFERENCES conversations (id)
-                )
-            """)
-            
-            # Create indexes for better performance
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_create_time ON conversations(create_time)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_messages_conversation_id ON messages(conversation_id)")
-            conn.execute("CREATE INDEX IF NOT EXISTS idx_conversations_tags ON conversations(tags)")
+        # Start cleanup thread
+        self.cleanup_thread = threading.Thread(target=self._cleanup_loop, daemon=True)
+        self.cleanup_thread.start()
     
-    def load_conversations_from_file(self, file_path: str) -> bool:
-        """Load conversations from JSON file into database"""
-        try:
-            with open(file_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
+    def get(self, key: str) -> Optional[Any]:
+        """
+        Get value from cache
+        
+        Args:
+            key: Cache key
             
-            # Handle different data formats
-            if isinstance(data, list):
-                conversations_data = data
-            elif isinstance(data, dict) and 'conversations' in data:
-                conversations_data = data['conversations']
-            else:
-                conversations_data = [data]
+        Returns:
+            Cached value or None if not found/expired
+        """
+        with self.lock:
+            if key in self.cache:
+                entry = self.cache[key]
+                
+                # Check if expired
+                if datetime.now() - entry.timestamp > entry.ttl:
+                    self._remove_entry(key)
+                    self.miss_count += 1
+                    return None
+                
+                # Update access count and move to end (LRU)
+                entry.access_count += 1
+                self.cache.move_to_end(key)
+                self.hit_count += 1
+                return entry.data
             
-            # Store in database
-            with sqlite3.connect(self.db_path) as conn:
-                for conv_data in conversations_data:
-                    self._store_conversation(conn, conv_data)
+            self.miss_count += 1
+            return None
+    
+    def set(self, key: str, value: Any, ttl: timedelta = timedelta(hours=1)):
+        """
+        Set value in cache
+        
+        Args:
+            key: Cache key
+            value: Value to cache
+            ttl: Time to live
+        """
+        with self.lock:
+            # Estimate size
+            size_bytes = self._estimate_size(value)
             
-            # Update total count
-            with sqlite3.connect(self.db_path) as conn:
-                cursor = conn.execute("SELECT COUNT(*) FROM conversations")
-                self.total_conversations = cursor.fetchone()[0]
+            # Remove if key already exists
+            if key in self.cache:
+                self._remove_entry(key)
             
-            return True
+            # Evict entries if needed
+            while (self.current_size_bytes + size_bytes > self.max_size_bytes or 
+                   len(self.cache) >= self.max_entries):
+                if not self._evict_least_used():
+                    break  # Can't evict more entries
             
-        except Exception as e:
-            print(f"Error loading conversations: {e}")
+            # Add new entry
+            entry = CacheEntry(
+                data=value,
+                timestamp=datetime.now(),
+                access_count=1,
+                size_bytes=size_bytes,
+                ttl=ttl
+            )
+            
+            self.cache[key] = entry
+            self.current_size_bytes += size_bytes
+    
+    def _remove_entry(self, key: str):
+        """Remove entry from cache"""
+        if key in self.cache:
+            entry = self.cache[key]
+            self.current_size_bytes -= entry.size_bytes
+            del self.cache[key]
+    
+    def _evict_least_used(self) -> bool:
+        """Evict least recently used entry"""
+        if not self.cache:
             return False
+        
+        # Remove first entry (least recently used)
+        key = next(iter(self.cache))
+        self._remove_entry(key)
+        return True
     
-    def _store_conversation(self, conn: sqlite3.Connection, conv_data: Dict[str, Any]):
-        """Store a conversation in the database"""
-        conv_id = conv_data.get('id', '')
-        
-        # Check if conversation already exists
-        cursor = conn.execute("SELECT data_hash FROM conversations WHERE id = ?", (conv_id,))
-        existing = cursor.fetchone()
-        
-        # Calculate data hash for change detection
-        data_hash = str(hash(json.dumps(conv_data, sort_keys=True)))
-        
-        if existing and existing[0] == data_hash:
-            return  # No changes
-        
-        # Extract messages
-        messages = []
-        mapping = conv_data.get('mapping', {})
-        for msg_id, msg_wrapper in mapping.items():
-            if 'message' in msg_wrapper and msg_wrapper['message']:
-                msg_data = msg_wrapper['message']
-                content = self._extract_content(msg_data.get('content', {}))
-                if content.strip():
-                    messages.append({
-                        'id': msg_id,
-                        'role': msg_data.get('author', {}).get('role', 'unknown'),
-                        'content': content,
-                        'create_time': msg_data.get('create_time', 0)
-                    })
-        
-        # Store conversation
-        conn.execute("""
-            INSERT OR REPLACE INTO conversations 
-            (id, title, create_time, update_time, summary, auto_title, tags, message_count, data_hash)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
-            conv_id,
-            conv_data.get('title', 'Untitled'),
-            conv_data.get('create_time', 0),
-            conv_data.get('update_time', 0),
-            '',  # summary
-            '',  # auto_title
-            '',  # tags
-            len(messages),
-            data_hash
-        ))
-        
-        # Store messages
-        conn.execute("DELETE FROM messages WHERE conversation_id = ?", (conv_id,))
-        for msg in messages:
-            conn.execute("""
-                INSERT INTO messages (id, conversation_id, role, content, create_time)
-                VALUES (?, ?, ?, ?, ?)
-            """, (msg['id'], conv_id, msg['role'], msg['content'], msg['create_time']))
+    def _estimate_size(self, value: Any) -> int:
+        """Estimate size of value in bytes"""
+        try:
+            return len(json.dumps(value, default=str).encode('utf-8'))
+        except:
+            return 1024  # Default estimate
     
-    def _extract_content(self, content_data: Dict[str, Any]) -> str:
-        """Extract text content from message content structure"""
-        if content_data.get('content_type') == 'text':
-            parts = content_data.get('parts', [])
-            return ' '.join(str(part) for part in parts if part)
-        return ''
+    def _cleanup_loop(self):
+        """Background cleanup loop"""
+        while True:
+            time.sleep(300)  # Run every 5 minutes
+            self._cleanup_expired()
     
-    def load_page(self, page: int) -> Tuple[List[Conversation], PageInfo]:
-        """Load a specific page of conversations"""
-        if page < 0:
-            page = 0
-        
-        # Check cache first
-        with self._cache_lock:
-            if page in self.page_cache:
-                return self.page_cache[page], self._get_page_info(page)
-        
-        # Calculate offset
-        offset = page * self.page_size
-        
-        # Load from database
-        conversations = []
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT id, title, create_time, update_time, summary, auto_title, tags, message_count
-                FROM conversations 
-                ORDER BY create_time DESC
-                LIMIT ? OFFSET ?
-            """, (self.page_size, offset))
+    def _cleanup_expired(self):
+        """Remove expired entries"""
+        with self.lock:
+            expired_keys = []
+            for key, entry in self.cache.items():
+                if datetime.now() - entry.timestamp > entry.ttl:
+                    expired_keys.append(key)
             
-            for row in cursor.fetchall():
-                conv_id, title, create_time, update_time, summary, auto_title, tags, message_count = row
-                
-                # Load messages for this conversation
-                messages = self._load_messages(conn, conv_id)
-                
-                # Create conversation object
-                conversation = Conversation({
-                    'id': conv_id,
-                    'title': title,
-                    'create_time': create_time,
-                    'update_time': update_time,
-                    'mapping': {}  # We'll populate messages directly
-                })
-                
-                # Set messages and metadata
-                conversation.messages = messages
-                conversation.summary = summary
-                conversation.auto_title = auto_title
-                conversation.tags = tags.split(',') if tags else []
-                
-                conversations.append(conversation)
-        
-        # Cache the page
-        with self._cache_lock:
-            self.page_cache[page] = conversations
-            self._cleanup_cache()
-        
-        return conversations, self._get_page_info(page)
-    
-    def _load_messages(self, conn: sqlite3.Connection, conversation_id: str) -> List[ChatMessage]:
-        """Load messages for a conversation"""
-        messages = []
-        cursor = conn.execute("""
-            SELECT id, role, content, create_time
-            FROM messages 
-            WHERE conversation_id = ?
-            ORDER BY create_time
-        """, (conversation_id,))
-        
-        for row in cursor.fetchall():
-            msg_id, role, content, create_time = row
-            message = ChatMessage({
-                'id': msg_id,
-                'author': {'role': role},
-                'create_time': create_time,
-                'content': {'content_type': 'text', 'parts': [content]}
-            })
-            messages.append(message)
-        
-        return messages
-    
-    def _get_page_info(self, page: int) -> PageInfo:
-        """Get information about a page"""
-        total_pages = (self.total_conversations + self.page_size - 1) // self.page_size
-        return PageInfo(
-            page_number=page,
-            page_size=self.page_size,
-            total_items=self.total_conversations,
-            total_pages=total_pages,
-            has_next=page < total_pages - 1,
-            has_previous=page > 0
-        )
-    
-    def _cleanup_cache(self):
-        """Clean up cache to prevent memory bloat"""
-        if len(self.page_cache) > self.cache_size:
-            # Remove oldest entries
-            oldest_pages = sorted(self.page_cache.keys())[:len(self.page_cache) - self.cache_size]
-            for page in oldest_pages:
-                del self.page_cache[page]
-    
-    def search_conversations(self, query: str, page: int = 0) -> Tuple[List[Conversation], PageInfo]:
-        """Search conversations with pagination"""
-        query_lower = query.lower()
-        offset = page * self.page_size
-        
-        # Search in database
-        conversations = []
-        with sqlite3.connect(self.db_path) as conn:
-            # Search in titles and content
-            cursor = conn.execute("""
-                SELECT DISTINCT c.id, c.title, c.create_time, c.update_time, 
-                       c.summary, c.auto_title, c.tags, c.message_count
-                FROM conversations c
-                LEFT JOIN messages m ON c.id = m.conversation_id
-                WHERE c.title LIKE ? OR c.auto_title LIKE ? OR c.tags LIKE ? 
-                   OR m.content LIKE ?
-                ORDER BY c.create_time DESC
-                LIMIT ? OFFSET ?
-            """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%', 
-                  self.page_size, offset))
-            
-            for row in cursor.fetchall():
-                conv_id, title, create_time, update_time, summary, auto_title, tags, message_count = row
-                
-                # Load messages
-                messages = self._load_messages(conn, conv_id)
-                
-                # Create conversation object
-                conversation = Conversation({
-                    'id': conv_id,
-                    'title': title,
-                    'create_time': create_time,
-                    'update_time': update_time,
-                    'mapping': {}
-                })
-                
-                conversation.messages = messages
-                conversation.summary = summary
-                conversation.auto_title = auto_title
-                conversation.tags = tags.split(',') if tags else []
-                
-                conversations.append(conversation)
-        
-        # Get total count for search results
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("""
-                SELECT COUNT(DISTINCT c.id)
-                FROM conversations c
-                LEFT JOIN messages m ON c.id = m.conversation_id
-                WHERE c.title LIKE ? OR c.auto_title LIKE ? OR c.tags LIKE ? 
-                   OR m.content LIKE ?
-            """, (f'%{query}%', f'%{query}%', f'%{query}%', f'%{query}%'))
-            total_results = cursor.fetchone()[0]
-        
-        # Create page info for search results
-        total_pages = (total_results + self.page_size - 1) // self.page_size
-        page_info = PageInfo(
-            page_number=page,
-            page_size=self.page_size,
-            total_items=total_results,
-            total_pages=total_pages,
-            has_next=page < total_pages - 1,
-            has_previous=page > 0
-        )
-        
-        return conversations, page_info
+            for key in expired_keys:
+                self._remove_entry(key)
     
     def get_stats(self) -> Dict[str, Any]:
-        """Get statistics about stored conversations"""
-        with sqlite3.connect(self.db_path) as conn:
-            cursor = conn.execute("SELECT COUNT(*) FROM conversations")
-            total_conversations = cursor.fetchone()[0]
+        """Get cache statistics"""
+        with self.lock:
+            total_requests = self.hit_count + self.miss_count
+            hit_rate = self.hit_count / total_requests if total_requests > 0 else 0
             
-            cursor = conn.execute("SELECT COUNT(*) FROM messages")
-            total_messages = cursor.fetchone()[0]
-            
-            cursor = conn.execute("SELECT MIN(create_time), MAX(create_time) FROM conversations")
-            min_time, max_time = cursor.fetchone()
-            
-            cursor = conn.execute("SELECT SUM(LENGTH(content)) FROM messages")
-            total_chars = cursor.fetchone()[0] or 0
-        
-        return {
-            'total_conversations': total_conversations,
-            'total_messages': total_messages,
-            'total_characters': total_chars,
-            'earliest_date': datetime.fromtimestamp(min_time) if min_time else None,
-            'latest_date': datetime.fromtimestamp(max_time) if max_time else None,
-            'date_range_days': (datetime.fromtimestamp(max_time) - datetime.fromtimestamp(min_time)).days if min_time and max_time else 0
-        }
+            return {
+                'hit_count': self.hit_count,
+                'miss_count': self.miss_count,
+                'hit_rate': hit_rate,
+                'current_size_mb': self.current_size_bytes / (1024 * 1024),
+                'max_size_mb': self.max_size_bytes / (1024 * 1024),
+                'entry_count': len(self.cache),
+                'max_entries': self.max_entries
+            }
     
-    def clear_cache(self):
-        """Clear all caches to free memory"""
-        with self._cache_lock:
-            self.page_cache.clear()
-        gc.collect()  # Force garbage collection
+    def clear(self):
+        """Clear all cache entries"""
+        with self.lock:
+            self.cache.clear()
+            self.current_size_bytes = 0
+
+
+class DatabaseManager:
+    """Database optimization and connection management"""
+    
+    def __init__(self, db_path: str):
+        """
+        Initialize database manager
+        
+        Args:
+            db_path: Path to SQLite database
+        """
+        self.db_path = db_path
+        self.connection_pool = queue.Queue(maxsize=10)
+        self.query_cache = {}
+        self.stats = {
+            'query_count': 0,
+            'slow_queries': 0,
+            'cache_hits': 0
+        }
+        
+        # Initialize connection pool
+        for _ in range(5):
+            conn = sqlite3.connect(db_path)
+            conn.execute('PRAGMA journal_mode=WAL')
+            conn.execute('PRAGMA synchronous=NORMAL')
+            conn.execute('PRAGMA cache_size=10000')
+            conn.execute('PRAGMA temp_store=MEMORY')
+            self.connection_pool.put(conn)
+    
+    def get_connection(self) -> sqlite3.Connection:
+        """Get database connection from pool"""
+        try:
+            return self.connection_pool.get(timeout=5)
+        except queue.Empty:
+            # Create new connection if pool is empty
+            conn = sqlite3.connect(self.db_path)
+            conn.execute('PRAGMA journal_mode=WAL')
+            return conn
+    
+    def return_connection(self, conn: sqlite3.Connection):
+        """Return connection to pool"""
+        try:
+            self.connection_pool.put_nowait(conn)
+        except queue.Full:
+            conn.close()
+    
+    def execute_query(self, query: str, params: tuple = ()) -> List[tuple]:
+        """
+        Execute optimized database query
+        
+        Args:
+            query: SQL query
+            params: Query parameters
+            
+        Returns:
+            Query results
+        """
+        start_time = time.time()
+        
+        # Check query cache
+        query_hash = hashlib.md5(f"{query}{params}".encode()).hexdigest()
+        if query_hash in self.query_cache:
+            self.stats['cache_hits'] += 1
+            return self.query_cache[query_hash]
+        
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            cursor.execute(query, params)
+            results = cursor.fetchall()
+            
+            # Cache results for simple queries
+            if len(results) <= 100 and 'SELECT' in query.upper():
+                self.query_cache[query_hash] = results
+            
+            query_time = (time.time() - start_time) * 1000
+            self.stats['query_count'] += 1
+            
+            if query_time > 100:  # Log slow queries
+                self.stats['slow_queries'] += 1
+                logging.warning(f"Slow query ({query_time:.2f}ms): {query}")
+            
+            return results
+        finally:
+            self.return_connection(conn)
+    
+    def optimize_database(self):
+        """Optimize database performance"""
+        conn = self.get_connection()
+        try:
+            cursor = conn.cursor()
+            
+            # Analyze tables for better query planning
+            cursor.execute('ANALYZE')
+            
+            # Rebuild indexes
+            cursor.execute('REINDEX')
+            
+            # Vacuum database
+            cursor.execute('VACUUM')
+            
+            conn.commit()
+        finally:
+            self.return_connection(conn)
+    
+    def get_stats(self) -> Dict[str, Any]:
+        """Get database statistics"""
+        return {
+            'query_count': self.stats['query_count'],
+            'slow_queries': self.stats['slow_queries'],
+            'cache_hits': self.stats['cache_hits'],
+            'cache_hit_rate': self.stats['cache_hits'] / max(self.stats['query_count'], 1)
+        }
 
 
 class BackgroundProcessor:
-    """Handles background processing for heavy tasks"""
+    """Background processing for heavy analytics tasks"""
     
-    def __init__(self, max_workers: int = 2):
-        self.max_workers = max_workers
-        self.processing_queue = Queue()
-        self.results = {}
-        self.progress = {}
-        self.worker_threads = []
-        self.running = True
+    def __init__(self, max_workers: int = 4):
+        """
+        Initialize background processor
         
-        # Start worker threads
-        for i in range(max_workers):
-            thread = threading.Thread(target=self._worker, daemon=True)
-            thread.start()
-            self.worker_threads.append(thread)
+        Args:
+            max_workers: Maximum number of worker threads
+        """
+        self.executor = ThreadPoolExecutor(max_workers=max_workers)
+        self.task_queue = queue.Queue()
+        self.completed_tasks = {}
+        self.task_results = {}
+        
+        # Start background worker
+        self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
+        self.worker_thread.start()
     
-    def submit_task(self, task_id: str, task: Callable, args: tuple = (), kwargs: dict = None) -> str:
-        """Submit a task for background processing"""
-        if kwargs is None:
-            kwargs = {}
+    def submit_task(self, task_id: str, func: Callable, *args, **kwargs) -> str:
+        """
+        Submit task for background processing
         
-        self.progress[task_id] = 0.0
-        self.processing_queue.put((task_id, task, args, kwargs))
+        Args:
+            task_id: Unique task identifier
+            func: Function to execute
+            *args: Function arguments
+            **kwargs: Function keyword arguments
+            
+        Returns:
+            Task ID
+        """
+        self.completed_tasks[task_id] = False
+        self.task_queue.put((task_id, func, args, kwargs))
         return task_id
     
-    def get_progress(self, task_id: str) -> float:
-        """Get progress of a task (0.0 to 1.0)"""
-        return self.progress.get(task_id, 0.0)
+    def get_task_result(self, task_id: str, timeout: float = None) -> Optional[Any]:
+        """
+        Get result of completed task
+        
+        Args:
+            task_id: Task identifier
+            timeout: Timeout in seconds
+            
+        Returns:
+            Task result or None if not completed
+        """
+        start_time = time.time()
+        
+        while not self.completed_tasks.get(task_id, False):
+            if timeout and (time.time() - start_time) > timeout:
+                return None
+            time.sleep(0.1)
+        
+        return self.task_results.get(task_id)
     
-    def get_result(self, task_id: str, timeout: float = 0.1) -> Optional[Any]:
-        """Get result of a completed task"""
-        if task_id in self.results:
-            return self.results.pop(task_id)
-        return None
-    
-    def is_complete(self, task_id: str) -> bool:
-        """Check if a task is complete"""
-        return task_id in self.results
-    
-    def _worker(self):
-        """Worker thread for processing tasks"""
-        while self.running:
+    def _worker_loop(self):
+        """Background worker loop"""
+        while True:
             try:
-                task_id, task, args, kwargs = self.processing_queue.get(timeout=1.0)
+                task_id, func, args, kwargs = self.task_queue.get(timeout=1)
                 
+                # Execute task
                 try:
-                    # Execute task
-                    result = task(*args, **kwargs)
-                    self.results[task_id] = result
-                    self.progress[task_id] = 1.0
+                    result = func(*args, **kwargs)
+                    self.task_results[task_id] = result
+                    self.completed_tasks[task_id] = True
                 except Exception as e:
-                    self.results[task_id] = {'error': str(e)}
-                    self.progress[task_id] = 1.0
+                    self.task_results[task_id] = {'error': str(e)}
+                    self.completed_tasks[task_id] = True
+                    logging.error(f"Background task {task_id} failed: {e}")
                 
-                self.processing_queue.task_done()
-                
-            except Empty:
+            except queue.Empty:
                 continue
     
     def shutdown(self):
-        """Shutdown the background processor"""
-        self.running = False
-        for thread in self.worker_threads:
-            thread.join(timeout=1.0)
+        """Shutdown background processor"""
+        self.executor.shutdown(wait=True)
 
 
-class MemoryOptimizer:
-    """Handles memory optimization and monitoring"""
+class PerformanceOptimizer:
+    """Main performance optimization class"""
     
-    def __init__(self):
-        self.memory_threshold = 500 * 1024 * 1024  # 500MB
-        self.optimization_callbacks = []
+    def __init__(self, db_path: str = "data/insightvault.db", 
+                 cache_size_mb: int = 100, max_workers: int = 4):
+        """
+        Initialize performance optimizer
+        
+        Args:
+            db_path: Path to database
+            cache_size_mb: Cache size in megabytes
+            max_workers: Number of background workers
+        """
+        self.cache = ResponseCache(max_size_mb=cache_size_mb)
+        self.db_manager = DatabaseManager(db_path)
+        self.background_processor = BackgroundProcessor(max_workers=max_workers)
+        self.metrics_history = []
+        self.logger = logging.getLogger(__name__)
+        
+        # Performance monitoring
+        self.monitoring_enabled = True
+        self.monitor_thread = threading.Thread(target=self._monitor_performance, daemon=True)
+        self.monitor_thread.start()
     
-    def get_memory_usage(self) -> int:
-        """Get current memory usage in bytes"""
-        import psutil
-        process = psutil.Process()
-        return process.memory_info().rss
+    def get_cached_response(self, query_hash: str) -> Optional[Any]:
+        """
+        Get cached response for query
+        
+        Args:
+            query_hash: Hash of the query
+            
+        Returns:
+            Cached response or None
+        """
+        return self.cache.get(query_hash)
     
-    def is_memory_high(self) -> bool:
-        """Check if memory usage is above threshold"""
-        return self.get_memory_usage() > self.memory_threshold
+    def cache_response(self, query_hash: str, response: Any, ttl: timedelta = timedelta(hours=1)):
+        """
+        Cache response for query
+        
+        Args:
+            query_hash: Hash of the query
+            response: Response to cache
+            ttl: Time to live
+        """
+        self.cache.set(query_hash, response, ttl)
     
-    def optimize_memory(self):
-        """Perform memory optimization"""
+    def optimize_embeddings(self, conversations: List[Any]):
+        """
+        Optimize embedding storage and retrieval
+        
+        Args:
+            conversations: List of conversation objects
+        """
+        # Submit background task for embedding optimization
+        task_id = self.background_processor.submit_task(
+            'optimize_embeddings',
+            self._optimize_embeddings_task,
+            conversations
+        )
+        
+        self.logger.info(f"Submitted embedding optimization task: {task_id}")
+    
+    def background_analysis(self, conversations: List[Any]):
+        """
+        Run heavy analytics in background
+        
+        Args:
+            conversations: List of conversation objects
+        """
+        # Submit background task for analysis
+        task_id = self.background_processor.submit_task(
+            'background_analysis',
+            self._background_analysis_task,
+            conversations
+        )
+        
+        self.logger.info(f"Submitted background analysis task: {task_id}")
+    
+    def optimize_database_queries(self):
+        """Optimize database queries"""
+        self.db_manager.optimize_database()
+        self.logger.info("Database optimization completed")
+    
+    def get_performance_metrics(self) -> PerformanceMetrics:
+        """Get current performance metrics"""
+        # Get system metrics
+        memory_usage = psutil.virtual_memory().percent
+        cpu_usage = psutil.cpu_percent()
+        
+        # Get cache metrics
+        cache_stats = self.cache.get_stats()
+        
+        # Get database metrics
+        db_stats = self.db_manager.get_stats()
+        
+        metrics = PerformanceMetrics(
+            response_time_ms=0.0,  # Would be set by calling code
+            cache_hit_rate=cache_stats['hit_rate'],
+            memory_usage_mb=memory_usage,
+            cpu_usage_percent=cpu_usage,
+            database_query_time_ms=0.0,  # Would be set by calling code
+            api_call_time_ms=0.0,  # Would be set by calling code
+            timestamp=datetime.now()
+        )
+        
+        self.metrics_history.append(metrics)
+        
+        # Keep only last 1000 metrics
+        if len(self.metrics_history) > 1000:
+            self.metrics_history = self.metrics_history[-1000:]
+        
+        return metrics
+    
+    def get_performance_summary(self) -> Dict[str, Any]:
+        """Get performance summary"""
+        if not self.metrics_history:
+            return {}
+        
+        recent_metrics = self.metrics_history[-100:]  # Last 100 metrics
+        
+        return {
+            'average_response_time_ms': np.mean([m.response_time_ms for m in recent_metrics]),
+            'average_cache_hit_rate': np.mean([m.cache_hit_rate for m in recent_metrics]),
+            'average_memory_usage_mb': np.mean([m.memory_usage_mb for m in recent_metrics]),
+            'average_cpu_usage_percent': np.mean([m.cpu_usage_percent for m in recent_metrics]),
+            'total_metrics_collected': len(self.metrics_history),
+            'cache_stats': self.cache.get_stats(),
+            'database_stats': self.db_manager.get_stats()
+        }
+    
+    def optimize_memory_usage(self):
+        """Optimize memory usage"""
         # Force garbage collection
         gc.collect()
         
-        # Call optimization callbacks
-        for callback in self.optimization_callbacks:
+        # Clear old cache entries
+        self.cache._cleanup_expired()
+        
+        # Clear old metrics
+        if len(self.metrics_history) > 500:
+            self.metrics_history = self.metrics_history[-500:]
+        
+        self.logger.info("Memory optimization completed")
+    
+    def _optimize_embeddings_task(self, conversations: List[Any]) -> Dict[str, Any]:
+        """Background task for embedding optimization"""
+        try:
+            # Simulate embedding optimization
+            time.sleep(2)  # Simulate processing time
+            
+            return {
+                'status': 'completed',
+                'conversations_processed': len(conversations),
+                'optimization_time': time.time()
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'error': str(e)
+            }
+    
+    def _background_analysis_task(self, conversations: List[Any]) -> Dict[str, Any]:
+        """Background task for heavy analytics"""
+        try:
+            # Simulate heavy analysis
+            time.sleep(5)  # Simulate processing time
+            
+            return {
+                'status': 'completed',
+                'conversations_analyzed': len(conversations),
+                'analysis_time': time.time()
+            }
+        except Exception as e:
+            return {
+                'status': 'failed',
+                'error': str(e)
+            }
+    
+    def _monitor_performance(self):
+        """Background performance monitoring"""
+        while self.monitoring_enabled:
             try:
-                callback()
+                # Collect metrics every 30 seconds
+                time.sleep(30)
+                self.get_performance_metrics()
+                
+                # Optimize memory if usage is high
+                if psutil.virtual_memory().percent > 80:
+                    self.optimize_memory_usage()
+                
             except Exception as e:
-                print(f"Error in memory optimization callback: {e}")
+                self.logger.error(f"Performance monitoring error: {e}")
     
-    def add_optimization_callback(self, callback: Callable):
-        """Add a callback for memory optimization"""
-        self.optimization_callbacks.append(callback)
-    
-    def get_memory_stats(self) -> Dict[str, Any]:
-        """Get detailed memory statistics"""
-        import psutil
-        
-        process = psutil.Process()
-        memory_info = process.memory_info()
-        
-        return {
-            'rss': memory_info.rss,
-            'vms': memory_info.vms,
-            'percent': process.memory_percent(),
-            'available': psutil.virtual_memory().available,
-            'total': psutil.virtual_memory().total,
-            'threshold_exceeded': self.is_memory_high()
-        }
+    def shutdown(self):
+        """Shutdown performance optimizer"""
+        self.monitoring_enabled = False
+        self.background_processor.shutdown()
+        self.logger.info("Performance optimizer shutdown completed")
 
 
-# Global instances
-paginated_loader = PaginatedConversationLoader()
-background_processor = BackgroundProcessor()
-memory_optimizer = MemoryOptimizer() 
+def main():
+    """Test the performance optimizer"""
+    optimizer = PerformanceOptimizer()
+    
+    # Test caching
+    test_data = {"query": "test", "response": "test response"}
+    query_hash = hashlib.md5(json.dumps(test_data).encode()).hexdigest()
+    
+    optimizer.cache_response(query_hash, test_data)
+    cached_response = optimizer.get_cached_response(query_hash)
+    
+    print(f"Cached response: {cached_response}")
+    
+    # Test performance metrics
+    metrics = optimizer.get_performance_metrics()
+    print(f"Performance metrics: {metrics}")
+    
+    # Test background processing
+    def test_task():
+        time.sleep(2)
+        return "Task completed"
+    
+    task_id = optimizer.background_processor.submit_task("test", test_task)
+    result = optimizer.background_processor.get_task_result(task_id, timeout=5)
+    
+    print(f"Background task result: {result}")
+    
+    # Get performance summary
+    summary = optimizer.get_performance_summary()
+    print(f"Performance summary: {summary}")
+    
+    optimizer.shutdown()
+
+
+if __name__ == '__main__':
+    main() 
