@@ -1,0 +1,161 @@
+"use client";
+
+import React, { useState } from "react";
+import { Button } from "@/components/ui/Button";
+import { Input } from "@/components/ui/Input";
+import { useAuth } from "@/contexts/AuthContext";
+
+interface RegisterFormProps {
+  onSuccess?: () => void;
+  onSwitchToLogin?: () => void;
+}
+
+export function RegisterForm({
+  onSuccess,
+  onSwitchToLogin,
+}: RegisterFormProps) {
+  const { register, isLoading } = useAuth();
+  const [formData, setFormData] = useState({
+    username: "",
+    password: "",
+    confirmPassword: "",
+  });
+  const [errors, setErrors] = useState<Record<string, string>>({});
+  const [submitError, setSubmitError] = useState("");
+  const [successMessage, setSuccessMessage] = useState("");
+
+  const validateForm = () => {
+    const newErrors: Record<string, string> = {};
+
+    if (!formData.username.trim()) {
+      newErrors.username = "Email is required";
+    } else if (!/\S+@\S+\.\S+/.test(formData.username)) {
+      newErrors.username = "Please enter a valid email address";
+    }
+
+    if (!formData.password) {
+      newErrors.password = "Password is required";
+    } else if (formData.password.length < 6) {
+      newErrors.password = "Password must be at least 6 characters";
+    }
+
+    if (!formData.confirmPassword) {
+      newErrors.confirmPassword = "Please confirm your password";
+    } else if (formData.password !== formData.confirmPassword) {
+      newErrors.confirmPassword = "Passwords do not match";
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSubmitError("");
+    setSuccessMessage("");
+
+    if (!validateForm()) {
+      return;
+    }
+
+    try {
+      await register({
+        username: formData.username,
+        password: formData.password,
+      });
+      setSuccessMessage("Account created successfully! You can now sign in.");
+      setFormData({ username: "", password: "", confirmPassword: "" });
+      onSuccess?.();
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : "Registration failed"
+      );
+    }
+  };
+
+  const handleChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const { name, value } = e.target;
+    setFormData((prev) => ({ ...prev, [name]: value }));
+
+    // Clear error when user starts typing
+    if (errors[name]) {
+      setErrors((prev) => ({ ...prev, [name]: "" }));
+    }
+  };
+
+  return (
+    <div className="w-full max-w-md mx-auto">
+      <div className="bg-white py-8 px-6 shadow-lg rounded-lg">
+        <div className="text-center mb-8">
+          <h2 className="text-2xl font-bold text-gray-900">Create account</h2>
+          <p className="text-gray-600 mt-2">Join InsightVault today</p>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-6">
+          {submitError && (
+            <div className="bg-red-50 border border-red-200 rounded-md p-3">
+              <p className="text-sm text-red-600">{submitError}</p>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="bg-green-50 border border-green-200 rounded-md p-3">
+              <p className="text-sm text-green-600">{successMessage}</p>
+            </div>
+          )}
+
+          <Input
+            label="Email"
+            type="email"
+            name="username"
+            value={formData.username}
+            onChange={handleChange}
+            error={errors.username}
+            placeholder="Enter your email"
+            required
+          />
+
+          <Input
+            label="Password"
+            type="password"
+            name="password"
+            value={formData.password}
+            onChange={handleChange}
+            error={errors.password}
+            placeholder="Create a password"
+            helperText="Must be at least 6 characters"
+            required
+          />
+
+          <Input
+            label="Confirm Password"
+            type="password"
+            name="confirmPassword"
+            value={formData.confirmPassword}
+            onChange={handleChange}
+            error={errors.confirmPassword}
+            placeholder="Confirm your password"
+            required
+          />
+
+          <Button type="submit" className="w-full" isLoading={isLoading}>
+            Create Account
+          </Button>
+        </form>
+
+        <div className="mt-6 text-center">
+          <p className="text-sm text-gray-600">
+            Already have an account?{" "}
+            <button
+              type="button"
+              onClick={onSwitchToLogin}
+              className="font-medium text-blue-600 hover:text-blue-500"
+            >
+              Sign in
+            </button>
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
