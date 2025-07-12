@@ -2,10 +2,12 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 import uvicorn
+import asyncio
 from .auth import router as auth_router
 from .api.files import router as files_router
 from .api.chat import router as chat_router
 from .api.settings import router as settings_router
+from .database import init_db
 
 app = FastAPI(
     title="InsightVault API",
@@ -29,6 +31,17 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(chat_router)
 app.include_router(settings_router)
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize database on startup if tables don't exist."""
+    try:
+        print("🔧 Checking database initialization...")
+        await init_db()
+        print("✅ Database ready!")
+    except Exception as e:
+        print(f"⚠️  Database initialization warning: {e}")
+        print("💡 You may need to run 'python init_db.py' manually if issues persist.")
 
 @app.get("/")
 async def root():
