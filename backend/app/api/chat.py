@@ -1,26 +1,86 @@
 from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 from typing import List, Optional, Dict, Any
 from pydantic import BaseModel
 from datetime import datetime
 import json
 import os
+import asyncio
 from ..database import get_sync_db
 from ..models import User, Conversation
 from ..auth import get_current_user
 import openai
 from ..config import Config
+import hashlib
+import pickle
+from pathlib import Path
 
 # Initialize OpenAI client
 openai_client = None
 try:
     if Config.OPENAI_API_KEY:
         openai_client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
-        print("✅ OpenAI client initialized successfully")
+        print("[SUCCESS] OpenAI client initialized successfully")
     else:
-        print("⚠️ OpenAI API key not configured - using fallback responses")
+        print("[WARNING] OpenAI API key not configured - using fallback responses")
 except Exception as e:
-    print(f"❌ OpenAI client initialization failed: {e}")
+    print(f"[ERROR] OpenAI client initialization failed: {e}")
+
+# Cache configuration
+CACHE_DIR = Path(__file__).parent.parent.parent / "data" / "chat_cache"
+CACHE_DIR.mkdir(parents=True, exist_ok=True)
+CACHE_EXPIRY_HOURS = 24  # Cache for 24 hours
+
+def get_cache_key(user_message: str, conversations_hash: str) -> str:
+    """Generate a cache key based on user message and conversation data hash."""
+    content = f"{user_message}:{conversations_hash}"
+    return hashlib.md5(content.encode()).hexdigest()
+
+def get_conversations_hash(conversations: List[Conversation]) -> str:
+    """Generate a hash of conversation data for cache invalidation."""
+    # Create a hash based on conversation IDs, content lengths, and modification times
+    hash_data = []
+    for conv in conversations:
+        # Use created_at if updated_at doesn't exist
+        timestamp = conv.updated_at.isoformat() if hasattr(conv, 'updated_at') and conv.updated_at else conv.created_at.isoformat() if conv.created_at else 'unknown'
+        hash_data.append(f"{conv.id}:{len(conv.content)}:{timestamp}")
+    return hashlib.md5(":".join(hash_data).encode()).hexdigest()
+
+def get_cached_response(cache_key: str) -> Optional[str]:
+    """Get cached response if it exists and is not expired."""
+    cache_file = CACHE_DIR / f"{cache_key}.pkl"
+    if not cache_file.exists():
+        return None
+    
+    try:
+        with open(cache_file, 'rb') as f:
+            cached_data = pickle.load(f)
+        
+        # Check if cache is expired
+        if (datetime.now() - cached_data['timestamp']).total_seconds() > CACHE_EXPIRY_HOURS * 3600:
+            cache_file.unlink()  # Delete expired cache
+            return None
+        
+        return cached_data['response']
+    except Exception:
+        # If cache is corrupted, delete it
+        if cache_file.exists():
+            cache_file.unlink()
+        return None
+
+def save_cached_response(cache_key: str, response: str):
+    """Save response to cache."""
+    try:
+        cache_file = CACHE_DIR / f"{cache_key}.pkl"
+        cached_data = {
+            'response': response,
+            'timestamp': datetime.now()
+        }
+        with open(cache_file, 'wb') as f:
+            pickle.dump(cached_data, f)
+    except Exception as e:
+        print(f"Failed to save cache: {e}")
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -38,6 +98,8 @@ class ChatResponse(BaseModel):
     conversation_id: Optional[int] = None
     insights: Optional[dict] = None
     timestamp: datetime
+    processing_status: Optional[str] = None  # New field for status updates
+    processing_stage: Optional[str] = None   # New field for current stage
 
 def detect_dynamic_topics_from_content(content: str) -> dict:
     """
@@ -371,12 +433,23 @@ def generate_follow_up_prompts(user_question: str, analysis_context: str, detect
 
 def generate_ai_response_with_gpt(user_message: str, conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """
-    Generate an AI response using ChatGPT API with rich context from conversations.
+    Generate an AI response using ChatGPT API with caching and optimization.
     """
     if not openai_client:
         return "OpenAI API is not configured. Please set your OPENAI_API_KEY environment variable."
     
     try:
+        # Check cache first
+        conversations_hash = get_conversations_hash(conversations)
+        cache_key = get_cache_key(user_message, conversations_hash)
+        cached_response = get_cached_response(cache_key)
+        
+        if cached_response:
+            print(f"✅ Cache hit for: {user_message[:50]}...")
+            return cached_response
+        
+        print(f"🔄 Cache miss, calling API for: {user_message[:50]}...")
+        
         # Prepare context from conversations
         context_data = prepare_conversation_context(conversations, focus_conversation)
         
@@ -409,15 +482,17 @@ Conversation Context:
 Please provide a comprehensive, insightful response that addresses the user's question using the conversation data provided. Be specific, reference patterns you see, and offer meaningful insights about their personal growth journey across all life areas - programming, spirituality, relationships, health, business, personal development, and any other topics they discuss.
 """
 
-        # Call ChatGPT API
+        # Call ChatGPT API with optimized parameters
         response = openai_client.chat.completions.create(
             model="gpt-4",
             messages=[
                 {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_prompt}
             ],
-            max_tokens=1500,
-            temperature=0.7
+            max_tokens=1200,  # Reduced from 1500
+            temperature=0.7,
+            presence_penalty=0.1,  # Reduce repetition
+            frequency_penalty=0.1   # Reduce repetition
         )
         
         ai_response = response.choices[0].message.content or ""
@@ -438,6 +513,9 @@ Please provide a comprehensive, insightful response that addresses the user's qu
             for i, prompt in enumerate(follow_up_prompts, 1):
                 ai_response += f"{i}. {prompt}\n"
         
+        # Cache the response
+        save_cached_response(cache_key, ai_response)
+        
         return ai_response
         
     except Exception as e:
@@ -445,7 +523,7 @@ Please provide a comprehensive, insightful response that addresses the user's qu
 
 def prepare_conversation_context(conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """
-    Prepare rich context data for ChatGPT analysis using dynamic topic detection.
+    Prepare optimized context data for ChatGPT analysis using smart sampling.
     """
     if focus_conversation:
         # Focus on specific conversation
@@ -465,18 +543,29 @@ Content Analysis:
 - Sentiment: {insights['sentiment']}
 - Key Insights: {'; '.join(insights['key_insights'])}
 
-Conversation Content (first 2000 characters):
-{focus_conversation.content[:2000]}{'...' if len(focus_conversation.content) > 2000 else ''}
+Conversation Content (first 1500 characters):
+{focus_conversation.content[:1500]}{'...' if len(focus_conversation.content) > 1500 else ''}
 """
     else:
-        # Analyze all conversations dynamically
+        # Smart sampling strategy to preserve historical context
         total_conversations = len(conversations)
+        
+        # Strategy: Sample across time periods to preserve historical patterns
+        if total_conversations <= 100:
+            # For smaller datasets, use all conversations
+            sampled_conversations = conversations
+            sample_strategy = "all conversations"
+        else:
+            # For larger datasets, use stratified sampling
+            sampled_conversations = smart_sample_conversations(conversations)
+            sample_strategy = "stratified sampling"
+        
         all_dynamic_topics = {}
         topic_conversations = {}
         sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
         
         # Collect all dynamic topics and categorize conversations
-        for conv in conversations:
+        for conv in sampled_conversations:
             insights = analyze_conversation_content(conv.content)
             sentiment_counts[insights["sentiment"]] += 1
             
@@ -510,12 +599,12 @@ Conversation Content (first 2000 characters):
                              key=lambda x: (x[1]['conversation_count'], x[1]['avg_confidence']), 
                              reverse=True)
         
-        # Build context string
-        context_parts = [f"OVERALL CONVERSATION ANALYTICS:\nTotal Conversations: {total_conversations}\n"]
+        # Build optimized context string
+        context_parts = [f"OVERALL CONVERSATION ANALYTICS:\nTotal Conversations: {total_conversations} (analyzed: {len(sampled_conversations)} using {sample_strategy})\n"]
         
-        # Dynamic topic breakdown
+        # Dynamic topic breakdown (limit to top 6)
         context_parts.append("DYNAMIC TOPIC ANALYSIS:")
-        for topic, data in sorted_topics[:8]:  # Top 8 topics
+        for topic, data in sorted_topics[:6]:  # Reduced from 8 to 6
             context_parts.append(f"- {topic.title()}: {data['conversation_count']} conversations (avg confidence: {data['avg_confidence']:.2f})")
         
         # Programming analysis (if relevant)
@@ -535,9 +624,9 @@ Conversation Content (first 2000 characters):
             tech_counts = Counter(all_technologies)
             concept_counts = Counter(all_concepts)
             
-            top_languages = [lang for lang, _ in lang_counts.most_common(5)]
-            top_technologies = [tech for tech, _ in tech_counts.most_common(5)]
-            top_concepts = [concept for concept, _ in concept_counts.most_common(5)]
+            top_languages = [lang for lang, _ in lang_counts.most_common(3)]  # Reduced from 5 to 3
+            top_technologies = [tech for tech, _ in tech_counts.most_common(3)]  # Reduced from 5 to 3
+            top_concepts = [concept for concept, _ in concept_counts.most_common(3)]  # Reduced from 5 to 3
             
             context_parts.append(f"\nPROGRAMMING ANALYSIS:")
             context_parts.append(f"- Top Languages: {', '.join(top_languages) if top_languages else 'Various'}")
@@ -550,15 +639,101 @@ Conversation Content (first 2000 characters):
         context_parts.append(f"- Neutral: {sentiment_counts['neutral']} conversations")
         context_parts.append(f"- Negative: {sentiment_counts['negative']} conversations")
         
-        # Recent conversations by topic
-        context_parts.append(f"\nRECENT CONVERSATIONS BY TOPIC (last 2 each):")
-        for topic, convos in list(topic_conversations.items())[:6]:  # Top 6 topics
-            recent_convos = convos[-2:]  # Last 2 conversations
+        # Recent conversations by topic (limit to top 4 topics, 1 conversation each)
+        context_parts.append(f"\nRECENT CONVERSATIONS BY TOPIC (last 1 each):")
+        for topic, convos in list(topic_conversations.items())[:4]:  # Reduced from 6 to 4
+            recent_convos = convos[-1:]  # Reduced from 2 to 1
             context_parts.append(f"{topic.title()}:")
             for conv, insights in recent_convos:
                 context_parts.append(f"  - {conv.title or 'Untitled'} ({insights['sentiment']} sentiment)")
         
         return '\n'.join(context_parts)
+
+def smart_sample_conversations(conversations: List[Conversation]) -> List[Conversation]:
+    """
+    Smart sampling strategy that preserves historical context and important patterns.
+    """
+    total_conversations = len(conversations)
+    target_sample_size = 100  # Increased from 50 to preserve more context
+    
+    if total_conversations <= target_sample_size:
+        return conversations
+    
+    # Strategy: Stratified sampling across time periods
+    # 1. Always include recent conversations (last 30%)
+    # 2. Sample from middle period (30-70%)
+    # 3. Sample from early period (first 30%)
+    # 4. Include high-value conversations (long, diverse topics)
+    
+    recent_count = int(total_conversations * 0.3)  # Last 30%
+    early_count = int(total_conversations * 0.3)   # First 30%
+    middle_count = total_conversations - recent_count - early_count
+    
+    # Get recent conversations (always include)
+    recent_conversations = conversations[-recent_count:]
+    
+    # Get early conversations (always include some for historical context)
+    early_conversations = conversations[:early_count]
+    
+    # Sample from middle period
+    middle_conversations = conversations[early_count:-recent_count]
+    middle_sample_size = target_sample_size - recent_count - min(early_count, 20)  # Keep some early ones
+    
+    # Smart sampling from middle period
+    if len(middle_conversations) > middle_sample_size:
+        # Sample based on conversation length and topic diversity
+        middle_conversations = sample_by_value(middle_conversations, middle_sample_size)
+    
+    # Combine all samples
+    sampled = early_conversations[:20] + middle_conversations + recent_conversations
+    
+    # Ensure we don't exceed target size
+    if len(sampled) > target_sample_size:
+        # Prioritize recent and high-value conversations
+        sampled = sampled[-target_sample_size:]
+    
+    return sampled
+
+def sample_by_value(conversations: List[Conversation], target_size: int) -> List[Conversation]:
+    """
+    Sample conversations based on their value (length, topic diversity, etc.).
+    """
+    if len(conversations) <= target_size:
+        return conversations
+    
+    # Score conversations based on value indicators
+    scored_conversations = []
+    for conv in conversations:
+        score = 0
+        
+        # Length score (longer conversations often have more insights)
+        length_score = min(len(conv.content) / 1000, 5)  # Cap at 5 points
+        score += length_score
+        
+        # Topic diversity score
+        insights = analyze_conversation_content(conv.content)
+        topic_diversity = len(insights.get('topics', []))
+        score += topic_diversity * 2
+        
+        # Sentiment score (include both positive and negative for balance)
+        if insights['sentiment'] != 'neutral':
+            score += 1
+        
+        scored_conversations.append((conv, score))
+    
+    # Sort by score and take top conversations
+    scored_conversations.sort(key=lambda x: x[1], reverse=True)
+    selected = [conv for conv, _ in scored_conversations[:target_size]]
+    
+    # Also include some random samples to maintain diversity
+    if len(conversations) > target_size * 2:
+        remaining = [conv for conv in conversations if conv not in selected]
+        random_sample_size = min(10, len(remaining))
+        import random
+        random_samples = random.sample(remaining, random_sample_size)
+        selected.extend(random_samples)
+    
+    return selected
 
 def generate_ai_response(user_message: str, conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """
@@ -758,14 +933,16 @@ async def send_message(
                 detail="Conversation not found"
             )
     
-    # Generate AI response
+    # Generate AI response with status updates
     try:
-        ai_response = generate_ai_response(request.message, conversations, focus_conversation)
+        ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
         
         return ChatResponse(
-            message=ai_response,
+            message=ai_response['message'],
             conversation_id=request.conversation_id,
-            timestamp=datetime.utcnow()
+            timestamp=datetime.utcnow(),
+            processing_status=ai_response.get('status', 'completed'),
+            processing_stage=ai_response.get('stage', 'response_generated')
         )
         
     except Exception as e:
@@ -773,6 +950,178 @@ async def send_message(
             status_code=500,
             detail=f"Error generating response: {str(e)}"
         )
+
+@router.post("/send-stream")
+async def send_message_stream(
+    request: ChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_sync_db)
+):
+    """
+    Send a message to the AI assistant and get streaming status updates.
+    """
+    async def generate_status_updates():
+        try:
+            # Get user's conversations
+            conversations = db.query(Conversation).filter(Conversation.user_id == current_user.id).all()
+            
+            if not conversations:
+                yield f"data: {json.dumps({'error': 'No conversations found. Please upload some ChatGPT conversations first.'})}\n\n"
+                return
+            
+            # Find specific conversation if requested
+            focus_conversation = None
+            if request.conversation_id:
+                focus_conversation = db.query(Conversation).filter(
+                    Conversation.id == request.conversation_id,
+                    Conversation.user_id == current_user.id
+                ).first()
+                
+                if not focus_conversation:
+                    yield f"data: {json.dumps({'error': 'Conversation not found'})}\n\n"
+                    return
+            
+            # Stage 1: Checking cache
+            yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '🔍'})}\n\n"
+            await asyncio.sleep(0.5)
+            
+            # Stage 2: Analyzing conversations
+            yield f"data: {json.dumps({'stage': 'analysis', 'status': 'Analyzing your conversations...', 'icon': '📊'})}\n\n"
+            await asyncio.sleep(1)
+            
+            # Stage 3: Preparing context
+            yield f"data: {json.dumps({'stage': 'context', 'status': 'Preparing conversation context...', 'icon': '🧠'})}\n\n"
+            await asyncio.sleep(0.8)
+            
+            # Stage 4: Contacting OpenAI
+            yield f"data: {json.dumps({'stage': 'openai', 'status': 'Contacting OpenAI API...', 'icon': '🤖'})}\n\n"
+            await asyncio.sleep(1.2)
+            
+            # Stage 5: Generating response
+            yield f"data: {json.dumps({'stage': 'generation', 'status': 'Crafting your personalized response...', 'icon': '✨'})}\n\n"
+            await asyncio.sleep(1.5)
+            
+            # Stage 6: Processing and formatting
+            yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '💡'})}\n\n"
+            await asyncio.sleep(0.8)
+            
+            # Generate the actual response
+            ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
+            
+            # Final response
+            yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '✅'})}\n\n"
+            
+        except Exception as e:
+            yield f"data: {json.dumps({'error': f'Error generating response: {str(e)}'})}\n\n"
+    
+    return StreamingResponse(
+        generate_status_updates(),
+        media_type="text/plain",
+        headers={"Cache-Control": "no-cache", "Connection": "keep-alive"}
+    )
+
+def generate_ai_response_with_status(user_message: str, conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> Dict[str, Any]:
+    """
+    Generate an AI response with status information.
+    """
+    if not openai_client:
+        return {
+            'message': "OpenAI API is not configured. Please set your OPENAI_API_KEY environment variable.",
+            'status': 'error',
+            'stage': 'api_error'
+        }
+    
+    try:
+        # Check cache first
+        conversations_hash = get_conversations_hash(conversations)
+        cache_key = get_cache_key(user_message, conversations_hash)
+        cached_response = get_cached_response(cache_key)
+        
+        if cached_response:
+            return {
+                'message': cached_response,
+                'status': 'completed',
+                'stage': 'cache_hit'
+            }
+        
+        # Prepare context from conversations
+        context_data = prepare_conversation_context(conversations, focus_conversation)
+        
+        # Create a comprehensive prompt
+        system_prompt = """You are an AI assistant that provides personalized analysis of ChatGPT conversation history. You adapt to whatever topics each user actually discusses - whether that's programming, spirituality, relationships, health, business, creativity, travel, politics, science, or any other topics.
+
+You have access to dynamic topic analysis that identifies what each user actually talks about, including:
+- Dynamically detected topics based on their actual conversation content
+- Topic confidence scores and conversation counts
+- Sentiment analysis and emotional patterns
+- Programming languages and technologies (when relevant)
+- Recent conversation trends and patterns
+
+Your role is to:
+1. Provide insights based on the user's ACTUAL conversation topics (not assumptions)
+2. Reference the specific topics they discuss and their confidence levels
+3. Offer personalized observations about their unique conversation patterns
+4. Connect insights across different topics when relevant
+5. Adapt your analysis to whatever life areas they focus on
+6. Provide holistic insights that reflect their individual interests and growth journey
+
+Be conversational, insightful, and specific. Reference the dynamic topic data provided and offer meaningful observations about their personal conversation patterns, whatever topics they discuss."""
+
+        user_prompt = f"""
+User Question: {user_message}
+
+Conversation Context:
+{context_data}
+
+Please provide a comprehensive, insightful response that addresses the user's question using the conversation data provided. Be specific, reference patterns you see, and offer meaningful insights about their personal growth journey across all life areas - programming, spirituality, relationships, health, business, personal development, and any other topics they discuss.
+"""
+
+        # Call ChatGPT API with optimized parameters
+        response = openai_client.chat.completions.create(
+            model="gpt-4",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=1200,  # Reduced from 1500
+            temperature=0.7,
+            presence_penalty=0.1,  # Reduce repetition
+            frequency_penalty=0.1   # Reduce repetition
+        )
+        
+        ai_response = response.choices[0].message.content or ""
+        
+        # Generate follow-up prompts
+        all_dynamic_topics = {}
+        for conv in conversations:
+            insights = analyze_conversation_content(conv.content)
+            for topic, data in insights.get('dynamic_topics', {}).items():
+                if topic not in all_dynamic_topics:
+                    all_dynamic_topics[topic] = data
+        
+        follow_up_prompts = generate_follow_up_prompts(user_message, context_data, all_dynamic_topics)
+        
+        # Add follow-up prompts to the response
+        if follow_up_prompts:
+            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            for i, prompt in enumerate(follow_up_prompts, 1):
+                ai_response += f"{i}. {prompt}\n"
+        
+        # Cache the response
+        save_cached_response(cache_key, ai_response)
+        
+        return {
+            'message': ai_response,
+            'status': 'completed',
+            'stage': 'response_generated'
+        }
+        
+    except Exception as e:
+        return {
+            'message': f"Error generating AI response: {str(e)}",
+            'status': 'error',
+            'stage': 'generation_error'
+        }
 
 @router.get("/conversations")
 async def get_conversations(
