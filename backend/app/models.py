@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean
+from sqlalchemy import Column, Integer, String, DateTime, ForeignKey, Text, Boolean, JSON
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from .database import Base
@@ -13,6 +13,7 @@ class User(Base):
     created_at = Column(DateTime, default=datetime.utcnow)
     files = relationship('UploadedFile', back_populates='owner')
     conversations = relationship('Conversation', back_populates='user')
+    sessions = relationship('UserSession', back_populates='user')
 
 class UploadedFile(Base):
     __tablename__ = 'uploaded_files'
@@ -43,4 +44,25 @@ class Insight(Base):
     sentiment = Column(String, nullable=True)
     topics = Column(String, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
-    conversation = relationship('Conversation', back_populates='insights') 
+    conversation = relationship('Conversation', back_populates='insights')
+
+class UserSession(Base):
+    __tablename__ = 'user_sessions'
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey('users.id'))
+    session_start = Column(DateTime, default=datetime.utcnow)
+    session_end = Column(DateTime, nullable=True)
+    context_summary = Column(Text, nullable=True)
+    user = relationship('User', back_populates='sessions')
+    interactions = relationship('UserInteraction', back_populates='session')
+
+class UserInteraction(Base):
+    __tablename__ = 'user_interactions'
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey('user_sessions.id'))
+    user_question = Column(Text, nullable=False)
+    ai_response = Column(Text, nullable=False)
+    context_used = Column(JSON, nullable=True)  # Array of context references
+    created_at = Column(DateTime, default=datetime.utcnow)
+    interaction_metadata = Column(JSON, nullable=True)  # Additional metadata like topics, sentiment, etc.
+    session = relationship('UserSession', back_populates='interactions') 

@@ -8,7 +8,7 @@ import json
 import os
 import asyncio
 from ..database import get_sync_db
-from ..models import User, Conversation
+from ..models import User, Conversation, UserSession, UserInteraction
 from ..auth import get_current_user
 import openai
 from ..config import Config
@@ -81,6 +81,37 @@ def save_cached_response(cache_key: str, response: str):
             pickle.dump(cached_data, f)
     except Exception as e:
         print(f"Failed to save cache: {e}")
+
+def get_or_create_session(db: Session, user_id: int) -> UserSession:
+    """Get the current active session or create a new one."""
+    # Check for existing active session
+    session = db.query(UserSession).filter(
+        UserSession.user_id == user_id,
+        UserSession.session_end.is_(None)
+    ).first()
+    
+    if not session:
+        # Create new session
+        session = UserSession()
+        session.user_id = user_id
+        db.add(session)
+        db.commit()
+        db.refresh(session)
+    
+    return session
+
+def store_interaction(db: Session, session_id: int, user_question: str, ai_response: str, context_used: Optional[List[str]] = None, metadata: Optional[dict] = None):
+    """Store a user interaction in the database."""
+    interaction = UserInteraction()
+    interaction.session_id = session_id
+    interaction.user_question = user_question
+    interaction.ai_response = ai_response
+    interaction.context_used = context_used or []
+    interaction.interaction_metadata = metadata or {}
+    
+    db.add(interaction)
+    db.commit()
+    return interaction
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -933,9 +964,32 @@ async def send_message(
                 detail="Conversation not found"
             )
     
+    # Get or create session for storing interactions
+    session = get_or_create_session(db, current_user.id)
+    
     # Generate AI response with status updates
     try:
         ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
+        
+        # Store the interaction
+        context_used = []
+        if focus_conversation:
+            context_used.append(f"conversation_{focus_conversation.id}")
+        
+        metadata = {
+            "topics": ai_response.get('topics', []),
+            "sentiment": ai_response.get('sentiment', 'neutral'),
+            "word_count": len(request.message.split())
+        }
+        
+        store_interaction(
+            db=db,
+            session_id=session.id,
+            user_question=request.message,
+            ai_response=ai_response['message'],
+            context_used=context_used,
+            metadata=metadata
+        )
         
         return ChatResponse(
             message=ai_response['message'],

@@ -6,6 +6,7 @@ from .auth import router as auth_router
 from .api.files import router as files_router
 from .api.chat import router as chat_router
 from .api.settings import router as settings_router
+from .api.sessions import router as sessions_router
 
 app = FastAPI(
     title="InsightVault API",
@@ -29,6 +30,7 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(chat_router)
 app.include_router(settings_router)
+app.include_router(sessions_router)
 
 @app.get("/")
 async def root():
