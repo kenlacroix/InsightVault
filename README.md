@@ -1,3 +1,18 @@
+# InsightVault
+
+> **Windows users:**
+> For the smoothest backend install, use `requirements-windows.txt`:
+>
+> ```sh
+> pip install -r backend/requirements-windows.txt
+> ```
+>
+> This file contains only the versions and packages confirmed to work on Windows. For Linux/macOS, use `backend/requirements.txt`.
+
+---
+
+(Existing project documentation continues below)
+
 # 🧠 InsightVault - Personal Growth Reflection Tool
 
 A local desktop application that helps you explore and reflect on your personal growth using exported ChatGPT conversations. InsightVault acts like a **digital therapist**, **personal historian**, and **insight engine** to help you find patterns in your dialogues around spirituality, healing, and self-awareness.
