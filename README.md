@@ -1,309 +1,244 @@
-# InsightVault
-
-> **Windows users:**
-> For the smoothest backend install, use `requirements-windows.txt`:
->
-> ```sh
-> pip install -r backend/requirements-windows.txt
-> ```
->
-> This file contains only the versions and packages confirmed to work on Windows. For Linux/macOS, use `backend/requirements.txt`.
-
----
-
-(Existing project documentation continues below)
-
 # 🧠 InsightVault - Personal Growth Reflection Tool
 
-A local desktop application that helps you explore and reflect on your personal growth using exported ChatGPT conversations. InsightVault acts like a **digital therapist**, **personal historian**, and **insight engine** to help you find patterns in your dialogues around spirituality, healing, and self-awareness.
+A modern web application that helps you explore and reflect on your personal growth using exported ChatGPT conversations. InsightVault acts like a **digital therapist**, **personal historian**, and **insight engine** to help you find patterns in your dialogues around spirituality, healing, and self-awareness.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Python](https://img.shields.io/badge/python-3.7+-green.svg)
+![Python](https://img.shields.io/badge/python-3.8+-green.svg)
+![Next.js](https://img.shields.io/badge/Next.js-14+-black.svg)
 ![OpenAI](https://img.shields.io/badge/powered%20by-OpenAI%20GPT--4-orange.svg)
 
 ## ✨ Features
 
 - **📥 Import ChatGPT Conversations** - Load and parse your exported ChatGPT conversations
-- **🤖 AI-Powered Summaries** - Automatically generate titles, summaries, and topic tags using GPT-4
-- **🔍 Search & Filter** - Find conversations by keyword, tag, or date range
-- **💡 Deep Insights** - Ask reflective questions and get integrated analysis across your conversations
-- **📊 Export Options** - Save insights and summaries to Markdown files
+- **🤖 AI-Powered Analysis** - Generate titles, summaries, and insights using GPT-4
+- **🔍 Advanced Search & Filter** - Find conversations by keyword, tag, or date range
+- **💡 Deep Insights** - Ask reflective questions and get comprehensive analysis
+- **📊 Analytics Dashboard** - Visualize your growth patterns and trends
 - **🏠 Local-First** - All data stays on your computer, privacy-focused design
 - **⚡ Smart Caching** - Cache GPT results to save API costs
+- **🌐 Modern Web Interface** - Responsive design with real-time updates
 
 ## 🚀 Quick Start
 
-### 1. Install Dependencies
+### Option 1: Unified Launcher (Recommended)
 
 ```bash
-# Clone or download this repository
-git clone <repository-url>
-cd insightvault
+# Clone the repository
+git clone https://github.com/your-username/InsightVault.git
+cd InsightVault
 
-# Option A: Use the setup script (recommended)
-python setup.py
-
-# Option B: Manual installation
-# Install PySimpleGUI from private server
-pip install --force-reinstall --extra-index-url https://PySimpleGUI.net/install PySimpleGUI>=5.0.10
-
-# Install other dependencies
-pip install -r requirements.txt
+# Start with auto-install
+python insightvault.py start --auto-install
 ```
 
-### 2. Configure OpenAI API Key
+The launcher will:
+
+- ✅ Check system requirements
+- ✅ Install dependencies automatically
+- ✅ Start both backend and frontend servers
+- ✅ Open the application in your browser
+
+### Option 2: Manual Setup
 
 ```bash
-# Copy the example config file
+# 1. Install backend dependencies
+pip install -r backend/requirements.txt
+
+# 2. Install frontend dependencies
+cd frontend
+npm install
+cd ..
+
+# 3. Configure OpenAI API key
 cp config.json.example config.json
-
 # Edit config.json with your OpenAI API key
-{
-    "openai_api_key": "your_openai_api_key_here",
-    "model": "gpt-4",
-    "max_tokens": 1500,
-    "temperature": 0.7
-}
+
+# 4. Start the application
+python insightvault.py start
 ```
 
-**Get your OpenAI API key:**
+## 🔑 Getting Your OpenAI API Key
 
 1. Visit [OpenAI API Keys](https://platform.openai.com/api-keys)
 2. Create a new secret key
 3. Add it to your `config.json` file
 
-### 3. Prepare Your Data
+> **⚠️ Security Note**: Never commit your API key to version control. The `config.json` file is already in `.gitignore`.
 
-**Export your ChatGPT conversations:**
+## 📁 Preparing Your Data
 
-1. Go to [ChatGPT Settings](https://chat.openai.com/settings/data-export)
+### Export ChatGPT Conversations
+
+1. Go to [ChatGPT Data Export](https://chat.openai.com/settings/data-export)
 2. Request a data export
-3. Download and extract the `conversations.json` file
-4. Place it in the `data/` folder (or load it via the GUI)
+3. Download the `conversations.json` file
+4. Upload it through the web interface
 
-**Or use sample data:**
+### Sample Data
 
-- Sample conversations are included in `data/sample_conversations.json`
+Sample conversations are included in `data/sample_conversations.json` for testing.
 
-### 4. Launch the Application
+## 🌐 Accessing the Application
 
-```bash
-# Launch GUI (recommended)
-python main.py
+Once running:
 
-# Or use command line interface
-python main.py --cli
-
-# Show detailed help
-python main.py --help-detailed
-```
+- **Frontend**: http://localhost:3000
+- **Backend API**: http://localhost:8000
+- **API Documentation**: http://localhost:8000/docs
 
 ## 🎯 Usage Guide
 
-### Loading Conversations
+### 1. Upload Conversations
 
-1. **GUI**: Click "File" → "Load Conversations" and select your `conversations.json` file
-2. **CLI**: Enter the file path when prompted
+Use the file upload interface to load your ChatGPT exports.
 
-### Exploring Your Data
+### 2. Generate Summaries
 
-- **Search**: Type keywords to find relevant conversations
-- **Filter by Tag**: Use the dropdown to filter by auto-generated topic tags
-- **View Details**: Click any conversation to see summary, tags, and full content
+Click "Summarize All" to process your conversations with AI.
 
-### Generating Insights
+### 3. Explore Insights
 
-1. **Choose a Question**: Select from predefined questions or write your own:
+- **Search**: Find conversations by keywords
+- **Filter**: Use tags and date ranges
+- **Ask Questions**: Generate insights about your growth
 
-   - "How have I grown spiritually over time?"
-   - "What emotional patterns have I been working through?"
-   - "How has my relationship with anxiety evolved?"
-   - "What breakthroughs have I had regarding childhood trauma?"
+### 4. Export Results
 
-2. **Generate Insight**: Click "Generate Insight" to get an AI-powered reflection that includes:
+Save insights as Markdown files for journaling.
 
-   - **Deep Analysis**: Multi-paragraph reflection on your growth patterns
-   - **Meaningful Quotes**: Key excerpts from your conversations
-   - **Themes**: Recurring topics and patterns identified
-   - **Timeline Insights**: How your perspectives have evolved over time
+## 🏗️ Architecture
 
-3. **Export Results**: Save insights as Markdown files for future reference
+InsightVault uses a modern full-stack architecture:
 
-### AI Features
+```
+┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
+│   Frontend      │    │    Backend      │    │   External      │
+│   (Next.js)     │◄──►│   (FastAPI)     │◄──►│   Services      │
+│                 │    │                 │    │                 │
+│ • React/TS      │    │ • Python        │    │ • OpenAI API    │
+│ • Tailwind CSS  │    │ • FastAPI       │    │ • Database      │
+│ • Next.js       │    │ • SQLAlchemy    │    │ • File Storage  │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
+```
 
-**Automatic Summarization:**
+### Technology Stack
 
-- Click "Tools" → "Summarize All" to process all conversations
-- Generates: Auto-titles, 2-5 sentence summaries, and topic tags
-- Results are cached to avoid reprocessing
-
-**Smart Caching:**
-
-- All GPT results are cached locally
-- Use "Tools" → "Clear Cache" to force regeneration
+| Component      | Technology           | Purpose               |
+| -------------- | -------------------- | --------------------- |
+| **Frontend**   | Next.js + TypeScript | Modern web interface  |
+| **Styling**    | Tailwind CSS         | Utility-first CSS     |
+| **Backend**    | FastAPI + Python     | API server            |
+| **Database**   | SQLite/PostgreSQL    | Data persistence      |
+| **AI**         | OpenAI GPT-4         | Conversation analysis |
+| **Deployment** | Docker               | Containerization      |
 
 ## 📁 Project Structure
 
 ```
-insightvault/
-├── main.py                 # App launcher
-├── chat_parser.py         # JSON parser and conversation handling
-├── summarizer.py          # GPT-4 summarization and tagging
-├── insight_engine.py      # Reflective Q&A and insight generation
-├── gui.py                 # PySimpleGUI interface
-├── config.json           # API key configuration (create from example)
-├── config.json.example   # Example configuration
-├── requirements.txt      # Python dependencies
-├── data/
-│   ├── sample_conversations.json
-│   └── cache/           # Cached GPT results
-├── output/              # Generated insights and summaries
-├── LICENSE             # MIT License
-└── README.md           # This file
+InsightVault/
+├── frontend/           # Next.js web application
+├── backend/            # FastAPI backend server
+├── shared/             # Shared TypeScript types
+├── docs/               # Documentation
+├── data/               # Sample data and cache
+├── tests/              # Test suite
+├── docker-compose.yml  # Docker configuration
+└── insightvault.py     # Unified launcher
 ```
 
-## 🔧 Technical Details
+## 📚 Documentation
 
-### Tech Stack
+- **[Getting Started](docs/getting-started.md)** - Installation and setup guide
+- **[Features Guide](docs/features.md)** - Complete feature documentation
+- **[Development Guide](docs/development.md)** - Development setup and architecture
+- **[API Reference](docs/api.md)** - Backend API documentation
+- **[Troubleshooting](docs/troubleshooting.md)** - Common issues and solutions
 
-| Component    | Technology           |
-| ------------ | -------------------- |
-| **Language** | Python 3.7+          |
-| **AI/NLP**   | OpenAI GPT-4 API     |
-| **GUI**      | PySimpleGUI          |
-| **Data**     | JSON, Pickle (cache) |
-| **Export**   | Markdown, CSV        |
+## 🔧 Development
 
-### Dependencies
+### Prerequisites
 
-- `openai>=1.3.0` - OpenAI API client
-- `PySimpleGUI>=5.0.10` - GUI framework (from private server)
-- `python-dateutil>=2.8.0` - Date parsing utilities
-- `matplotlib>=3.6.0` - Data visualization
-- `seaborn>=0.12.0` - Statistical visualization
-- `plotly>=5.13.0` - Interactive charts
-- `pandas>=1.5.0` - Data manipulation
-- `numpy>=1.24.0` - Numerical computing
-- `scikit-learn>=1.2.0` - Machine learning
-- `textblob>=0.17.0` - Sentiment analysis
+- Python 3.8+
+- Node.js 16+
+- Git
 
-### Data Privacy
+### Development Setup
 
-- **Local-First**: All conversations stay on your computer
-- **No Cloud Storage**: No external databases or cloud services
-- **API Usage**: Only sends conversation text to OpenAI for analysis
-- **Caching**: Results cached locally to minimize API calls
+```bash
+# Clone and setup
+git clone https://github.com/your-username/InsightVault.git
+cd InsightVault
 
-## 💡 Sample Reflective Questions
+# Create virtual environment
+python -m venv venv
+venv\Scripts\activate  # Windows
+source venv/bin/activate  # macOS/Linux
 
-**Spiritual Growth:**
+# Install dependencies
+pip install -r backend/requirements.txt
+cd frontend && npm install && cd ..
 
-- "How has my spiritual practice evolved over time?"
-- "What insights have I gained about my relationship with the divine?"
-- "How have I grown in mindfulness and presence?"
-
-**Emotional Healing:**
-
-- "What patterns do I see in my emotional responses?"
-- "How has my relationship with difficult emotions changed?"
-- "What breakthroughs have I had in therapy or self-work?"
-
-**Personal Development:**
-
-- "How has my sense of identity and self-worth evolved?"
-- "What have I learned about setting boundaries?"
-- "How have my perspectives on relationships developed?"
-
-**Life Direction:**
-
-- "What insights have I gained about my life purpose?"
-- "How have my values and priorities shifted?"
-- "What patterns do I see in my decision-making?"
-
-## 🛠 Development
+# Start development servers
+python insightvault.py start --dev
+```
 
 ### Running Tests
 
 ```bash
-# Test the parser with sample data
-python chat_parser.py
+# Backend tests
+cd backend && pytest
 
-# Test the summarizer
-python summarizer.py
-
-# Test the insight engine
-python insight_engine.py
+# Frontend tests
+cd frontend && npm test
 ```
 
-### Extending the Application
+## 🚀 Deployment
 
-The modular design makes it easy to extend:
-
-- **Add new export formats** in `summarizer.py` and `insight_engine.py`
-- **Customize prompts** in the `_create_summary_prompt()` and `_create_insight_prompt()` methods
-- **Add new GUI features** in `gui.py`
-- **Support other data formats** by extending `chat_parser.py`
-
-## ❓ Troubleshooting
-
-### Common Issues
-
-**"Import error: No module named 'openai'"**
+### Docker Deployment
 
 ```bash
-pip install -r requirements.txt
+# Build and run with Docker Compose
+docker-compose up --build
 ```
 
-**"Config file not found"**
+### Manual Deployment
 
-```bash
-cp config.json.example config.json
-# Then edit config.json with your API key
-```
+1. Set up production database (PostgreSQL)
+2. Configure environment variables
+3. Build frontend: `npm run build`
+4. Start backend with production server
+5. Serve frontend with nginx or similar
 
-**"Failed to load conversations"**
+## 🤝 Contributing
 
-- Ensure your JSON file is valid ChatGPT export format
-- Try with the sample data first: `data/sample_conversations.json`
-
-**"AI components not available"**
-
-- Check that your OpenAI API key is valid and has credits
-- Verify your `config.json` format matches the example
-
-### Getting Help
-
-1. Check the detailed help: `python main.py --help-detailed`
-2. Try the CLI mode for debugging: `python main.py --cli`
-3. Test with sample data first
-4. Check your OpenAI API key and account credits
+1. Fork the repository
+2. Create a feature branch: `git checkout -b feature/amazing-feature`
+3. Make your changes following the code style guidelines
+4. Test your changes thoroughly
+5. Commit with descriptive messages: `git commit -m "feat: add amazing feature"`
+6. Push to your fork: `git push origin feature/amazing-feature`
+7. Create a Pull Request
 
 ## 📄 License
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-**What this means:**
+## 🆘 Support
 
-- ✅ Free for commercial and personal use
-- ✅ You can modify, distribute, and build on it
-- ✅ No warranty or liability
-- ✅ Must include original license notice
+- **Documentation**: Check the [docs folder](docs/) for comprehensive guides
+- **Issues**: [Report bugs and request features](https://github.com/your-username/InsightVault/issues)
+- **Discussions**: [Ask questions and get help](https://github.com/your-username/InsightVault/discussions)
 
-## 🤝 Contributing
+## 🔄 Changelog
 
-Contributions are welcome! This project aims to help people gain insights into their personal growth journey. Here are some ways to contribute:
+### Recent Updates
 
-- **Bug Reports**: Report issues you encounter
-- **Feature Requests**: Suggest new reflection prompts or analysis features
-- **Code Contributions**: Improve the codebase, add tests, or optimize performance
-- **Documentation**: Help improve setup instructions or usage guides
-
-## 🙏 Acknowledgments
-
-- **OpenAI** for providing the GPT-4 API that powers the insights
-- **PySimpleGUI** for making desktop GUI development accessible
-- **ChatGPT Users** who inspired this tool through their personal growth journeys
+- **Unified Launcher**: Single command to start the entire application
+- **Modern Web Interface**: Replaced desktop GUI with responsive web app
+- **Enhanced Documentation**: Comprehensive guides and troubleshooting
+- **Improved Architecture**: FastAPI backend with Next.js frontend
+- **Better Error Handling**: Robust startup and diagnostic tools
 
 ---
 
-**Happy reflecting!** 🌱 May this tool help you discover meaningful patterns in your personal growth journey.
+_InsightVault is designed to help you discover patterns in your personal growth journey through AI-powered analysis of your ChatGPT conversations._
