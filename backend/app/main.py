@@ -36,12 +36,12 @@ app.include_router(settings_router)
 async def startup_event():
     """Initialize database on startup if tables don't exist."""
     try:
-        print("🔧 Checking database initialization...")
+        print("[INFO] Checking database initialization...")
         await init_db()
-        print("✅ Database ready!")
+        print("[SUCCESS] Database ready!")
     except Exception as e:
-        print(f"⚠️  Database initialization warning: {e}")
-        print("💡 You may need to run 'python init_db.py' manually if issues persist.")
+        print(f"[WARNING] Database initialization warning: {e}")
+        print("[INFO] You may need to run 'python init_db.py' manually if issues persist.")
 
 @app.get("/")
 async def root():

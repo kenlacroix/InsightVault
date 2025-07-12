@@ -445,10 +445,10 @@ def generate_ai_response_with_gpt(user_message: str, conversations: List[Convers
         cached_response = get_cached_response(cache_key)
         
         if cached_response:
-            print(f"✅ Cache hit for: {user_message[:50]}...")
+            print(f"[CACHE] Cache hit for: {user_message[:50]}...")
             return cached_response
         
-        print(f"🔄 Cache miss, calling API for: {user_message[:50]}...")
+        print(f"[CACHE] Cache miss, calling API for: {user_message[:50]}...")
         
         # Prepare context from conversations
         context_data = prepare_conversation_context(conversations, focus_conversation)
@@ -509,7 +509,7 @@ Please provide a comprehensive, insightful response that addresses the user's qu
         
         # Add follow-up prompts to the response
         if follow_up_prompts:
-            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            ai_response += "\n\n[INSIGHT] **Follow-up Questions You Might Find Interesting:**\n"
             for i, prompt in enumerate(follow_up_prompts, 1):
                 ai_response += f"{i}. {prompt}\n"
         
@@ -840,11 +840,11 @@ def generate_ai_response_fallback(user_message: str, conversations: List[Convers
                 
                 # Add learning insights
                 if dominant_difficulty == 'beginner':
-                    response += "\n\n📚 Learning Pattern: You seem to be focusing on foundational concepts and getting started with programming."
+                    response += "\n\n[LEARNING] Learning Pattern: You seem to be focusing on foundational concepts and getting started with programming."
                 elif dominant_difficulty == 'advanced':
-                    response += "\n\n🚀 Advanced Topics: You're diving deep into complex programming concepts and advanced techniques."
+                    response += "\n\n[ADVANCED] Advanced Topics: You're diving deep into complex programming concepts and advanced techniques."
                 else:
-                    response += "\n\n⚖️ Balanced Approach: You're covering a mix of beginner and advanced programming topics."
+                    response += "\n\n[BALANCED] Balanced Approach: You're covering a mix of beginner and advanced programming topics."
                 
                 return response
             else:
@@ -982,34 +982,34 @@ async def send_message_stream(
                     return
             
             # Stage 1: Checking cache
-            yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '🔍'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '[SEARCH]'})}\n\n"
             await asyncio.sleep(0.5)
             
             # Stage 2: Analyzing conversations
-            yield f"data: {json.dumps({'stage': 'analysis', 'status': 'Analyzing your conversations...', 'icon': '📊'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'analysis', 'status': 'Analyzing your conversations...', 'icon': '[ANALYZE]'})}\n\n"
             await asyncio.sleep(1)
             
             # Stage 3: Preparing context
-            yield f"data: {json.dumps({'stage': 'context', 'status': 'Preparing conversation context...', 'icon': '🧠'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'context', 'status': 'Preparing conversation context...', 'icon': '[BRAIN]'})}\n\n"
             await asyncio.sleep(0.8)
             
             # Stage 4: Contacting OpenAI
-            yield f"data: {json.dumps({'stage': 'openai', 'status': 'Contacting OpenAI API...', 'icon': '🤖'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'openai', 'status': 'Contacting OpenAI API...', 'icon': '[AI]'})}\n\n"
             await asyncio.sleep(1.2)
             
             # Stage 5: Generating response
-            yield f"data: {json.dumps({'stage': 'generation', 'status': 'Crafting your personalized response...', 'icon': '✨'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'generation', 'status': 'Crafting your personalized response...', 'icon': '[MAGIC]'})}\n\n"
             await asyncio.sleep(1.5)
             
             # Stage 6: Processing and formatting
-            yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '💡'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '[LIGHTBULB]'})}\n\n"
             await asyncio.sleep(0.8)
             
             # Generate the actual response
             ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
             
             # Final response
-            yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '✅'})}\n\n"
+            yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '[SUCCESS]'})}\n\n"
             
         except Exception as e:
             yield f"data: {json.dumps({'error': f'Error generating response: {str(e)}'})}\n\n"
@@ -1103,7 +1103,7 @@ Please provide a comprehensive, insightful response that addresses the user's qu
         
         # Add follow-up prompts to the response
         if follow_up_prompts:
-            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            ai_response += "\n\n[INSIGHT] **Follow-up Questions You Might Find Interesting:**\n"
             for i, prompt in enumerate(follow_up_prompts, 1):
                 ai_response += f"{i}. {prompt}\n"
         
