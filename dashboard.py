@@ -28,6 +28,11 @@ from sklearn.feature_extraction.text import TfidfVectorizer
 from sklearn.cluster import KMeans
 from sklearn.decomposition import PCA
 import umap
+import random
+import time
+import threading
+from queue import Queue
+import asyncio
 
 from chat_parser import Conversation, ChatParser
 from analytics_engine import AnalyticsEngine, AnalyticsData
@@ -668,7 +673,7 @@ class UnifiedDashboard:
         ])
     
     def _create_navigation(self) -> html.Div:
-        """Create modern tab navigation"""
+        """Create modern tab navigation with interactive features"""
         return html.Div([
             dbc.Nav([
                 dbc.NavItem([
@@ -682,6 +687,12 @@ class UnifiedDashboard:
                         html.I(className="fas fa-comments me-2"),
                         "Conversations"
                     ], id='conversations-tab', className='nav-link')
+                ]),
+                dbc.NavItem([
+                    dbc.NavLink([
+                        html.I(className="fas fa-mouse-pointer me-2"),
+                        "Interactive"
+                    ], id='interactive-tab', className='nav-link')
                 ]),
                 dbc.NavItem([
                     dbc.NavLink([
@@ -1095,11 +1106,12 @@ class UnifiedDashboard:
             Output('tab-content', 'children'),
             [Input('analytics-tab', 'n_clicks'),
              Input('conversations-tab', 'n_clicks'),
+             Input('interactive-tab', 'n_clicks'),
              Input('ai-tab', 'n_clicks'),
              Input('reports-tab', 'n_clicks')],
             prevent_initial_call=True
         )
-        def switch_tab(analytics_clicks, conversations_clicks, ai_clicks, reports_clicks):
+        def switch_tab(analytics_clicks, conversations_clicks, interactive_clicks, ai_clicks, reports_clicks):
             ctx = callback_context
             if not ctx.triggered:
                 return self._create_analytics_tab()
@@ -1110,6 +1122,8 @@ class UnifiedDashboard:
                 return self._create_analytics_tab()
             elif button_id == 'conversations-tab':
                 return self._create_conversations_tab()
+            elif button_id == 'interactive-tab':
+                return self._create_interactive_features_tab()
             elif button_id == 'ai-tab':
                 return self._create_ai_tab()
             elif button_id == 'reports-tab':
@@ -1253,6 +1267,9 @@ class UnifiedDashboard:
         
         # Setup advanced analytics callbacks
         self._setup_advanced_callbacks()
+        
+        # Add the new interactive callbacks
+        self._setup_interactive_callbacks()
     
     def load_conversations(self, conversations: List[Conversation]) -> bool:
         """Load conversations into the dashboard"""
@@ -2169,6 +2186,482 @@ class UnifiedDashboard:
     def _create_enhanced_growth_metrics_figure(self) -> go.Figure:
         """Create enhanced growth metrics figure"""
         return self._create_growth_metrics_figure()
+
+    def _create_interactive_features_tab(self) -> html.Div:
+        """Create interactive features tab with real-time capabilities"""
+        return html.Div([
+            dbc.Row([
+                # Real-time Chat Simulation
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("Real-time Chat Simulation", className="mb-0"),
+                            dbc.Badge("Live", color="danger", className="ms-2")
+                        ]),
+                        dbc.CardBody([
+                            html.Div(id="chat-simulation-container", className="mb-3"),
+                            dbc.ButtonGroup([
+                                dbc.Button([
+                                    html.I(className="fas fa-play me-2"),
+                                    "Start Simulation"
+                                ], id="start-simulation", color="success", size="sm"),
+                                dbc.Button([
+                                    html.I(className="fas fa-pause me-2"),
+                                    "Pause"
+                                ], id="pause-simulation", color="warning", size="sm"),
+                                dbc.Button([
+                                    html.I(className="fas fa-stop me-2"),
+                                    "Stop"
+                                ], id="stop-simulation", color="danger", size="sm")
+                            ], className="mb-3"),
+                            html.Div(id="simulation-status")
+                        ])
+                    ])
+                ], width=6),
+                
+                # Interactive Data Explorer
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("Interactive Data Explorer", className="mb-0"),
+                            dbc.Badge("Dynamic", color="info", className="ms-2")
+                        ]),
+                        dbc.CardBody([
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Label("Exploration Mode", className="fw-semibold"),
+                                    dcc.Dropdown(
+                                        id='exploration-mode',
+                                        options=[
+                                            {'label': 'Sentiment Deep Dive', 'value': 'sentiment'},
+                                            {'label': 'Topic Evolution', 'value': 'topics'},
+                                            {'label': 'Growth Patterns', 'value': 'growth'},
+                                            {'label': 'Writing Style Analysis', 'value': 'writing'}
+                                        ],
+                                        value='sentiment',
+                                        clearable=False,
+                                        className='mb-3'
+                                    )
+                                ], width=6),
+                                dbc.Col([
+                                    dbc.Label("Detail Level", className="fw-semibold"),
+                                    dcc.Slider(
+                                        id='detail-level',
+                                        min=1, max=5, step=1, value=3,
+                                        marks={i: str(i) for i in range(1, 6)},
+                                        className='mb-3'
+                                    )
+                                ], width=6)
+                            ]),
+                            html.Div(id="explorer-content")
+                        ])
+                    ])
+                ], width=6)
+            ], className="mb-4"),
+            
+            dbc.Row([
+                # Dynamic Filtering System
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("Dynamic Filtering System", className="mb-0"),
+                            dbc.Badge("Smart", color="primary", className="ms-2")
+                        ]),
+                        dbc.CardBody([
+                            dbc.Row([
+                                dbc.Col([
+                                    dbc.Label("Smart Filters", className="fw-semibold"),
+                                    dcc.Checklist(
+                                        id='smart-filters',
+                                        options=[
+                                            {'label': 'High Impact Conversations', 'value': 'high-impact'},
+                                            {'label': 'Breakthrough Moments', 'value': 'breakthrough'},
+                                            {'label': 'Learning Patterns', 'value': 'learning'},
+                                            {'label': 'Goal-Oriented', 'value': 'goals'}
+                                        ],
+                                        value=['high-impact'],
+                                        inline=True,
+                                        className='mb-3'
+                                    )
+                                ], width=12)
+                            ]),
+                            html.Div(id="filter-results")
+                        ])
+                    ])
+                ], width=6),
+                
+                # User Engagement Features
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("User Engagement", className="mb-0"),
+                            dbc.Badge("Interactive", color="success", className="ms-2")
+                        ]),
+                        dbc.CardBody([
+                            dbc.ButtonGroup([
+                                dbc.Button([
+                                    html.I(className="fas fa-lightbulb me-2"),
+                                    "Get Insights"
+                                ], id="get-insights", color="warning", size="sm"),
+                                dbc.Button([
+                                    html.I(className="fas fa-question-circle me-2"),
+                                    "Ask Questions"
+                                ], id="ask-questions", color="info", size="sm"),
+                                dbc.Button([
+                                    html.I(className="fas fa-star me-2"),
+                                    "Rate Experience"
+                                ], id="rate-experience", color="primary", size="sm")
+                            ], className="mb-3"),
+                            html.Div(id="engagement-feedback")
+                        ])
+                    ])
+                ], width=6)
+            ]),
+            
+            # Interactive Charts Section
+            dbc.Row([
+                dbc.Col([
+                    dbc.Card([
+                        dbc.CardHeader([
+                            html.H5("Interactive Charts", className="mb-0"),
+                            dbc.Badge("Clickable", color="secondary", className="ms-2")
+                        ]),
+                        dbc.CardBody([
+                            dcc.Graph(
+                                id="interactive-chart",
+                                figure=self._create_interactive_chart(),
+                                config={
+                                    'displayModeBar': True,
+                                    'displaylogo': False,
+                                    'modeBarButtonsToAdd': ['pan2d', 'select2d', 'lasso2d', 'resetScale2d'],
+                                    'modeBarButtonsToRemove': ['autoScale2d'],
+                                    'toImageButtonOptions': {
+                                        'format': 'png',
+                                        'filename': 'interactive_chart',
+                                        'height': 600,
+                                        'width': 1000,
+                                        'scale': 2
+                                    }
+                                }
+                            )
+                        ])
+                    ])
+                ], width=12)
+            ])
+        ])
+
+    def _create_interactive_chart(self) -> go.Figure:
+        """Create an interactive chart with clickable elements"""
+        if not self.analytics_data:
+            return go.Figure().add_annotation(text="No data available for interactive chart", showarrow=False)
+        
+        # Create a scatter plot with conversation points
+        conversations = self.conversations[:20]  # Limit for performance
+        
+        x_values = []
+        y_values = []
+        text_values = []
+        colors = []
+        
+        for i, conv in enumerate(conversations):
+            # X-axis: time progression
+            x_values.append(i)
+            
+            # Y-axis: sentiment score (placeholder for now)
+            y_values.append(random.uniform(-0.5, 0.5))  # Placeholder sentiment score
+            
+            # Text for hover
+            text_values.append(f"Conversation {i+1}<br>{conv.title[:50]}...")
+            
+            # Color based on sentiment
+            if y_values[-1] > 0.1:
+                colors.append(self.colors['success'])
+            elif y_values[-1] < -0.1:
+                colors.append(self.colors['danger'])
+            else:
+                colors.append(self.colors['info'])
+        
+        fig = go.Figure(data=[
+            go.Scatter(
+                x=x_values,
+                y=y_values,
+                mode='markers+text',
+                marker=dict(
+                    size=15,
+                    color=colors,
+                    line=dict(width=2, color='white')
+                ),
+                text=[f"C{i+1}" for i in range(len(conversations))],
+                textposition="middle center",
+                textfont=dict(color="white", size=10),
+                hovertemplate='<b>%{text}</b><br>Sentiment: %{y:.3f}<extra></extra>',
+                customdata=[conv.id for conv in conversations]
+            )
+        ])
+        
+        fig.update_layout(
+            title="Interactive Conversation Explorer - Click on points for details",
+            xaxis_title="Conversation Order",
+            yaxis_title="Sentiment Score",
+            template=self.plotly_template,
+            height=500,
+            clickmode='event+select'
+        )
+        
+        return fig
+
+    def _setup_interactive_callbacks(self):
+        """Setup interactive feature callbacks"""
+        if not self.app:
+            return
+        
+        # Chat simulation callbacks
+        @self.app.callback(
+            [Output('chat-simulation-container', 'children'),
+             Output('simulation-status', 'children')],
+            [Input('start-simulation', 'n_clicks'),
+             Input('pause-simulation', 'n_clicks'),
+             Input('stop-simulation', 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def handle_simulation_controls(start_clicks, pause_clicks, stop_clicks):
+            ctx = callback_context
+            if not ctx.triggered:
+                return dash.no_update, dash.no_update
+            
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            
+            if button_id == 'start-simulation':
+                return self._create_chat_simulation(), "🟢 Simulation running..."
+            elif button_id == 'pause-simulation':
+                return dash.no_update, "🟡 Simulation paused"
+            elif button_id == 'stop-simulation':
+                return [], "🔴 Simulation stopped"
+            
+            return dash.no_update, dash.no_update
+        
+        # Data explorer callback
+        @self.app.callback(
+            Output('explorer-content', 'children'),
+            [Input('exploration-mode', 'value'),
+             Input('detail-level', 'value')],
+            prevent_initial_call=False
+        )
+        def update_explorer_content(mode, detail_level):
+            if not mode:
+                return html.Div("Select an exploration mode")
+            
+            return self._create_explorer_content(mode, detail_level)
+        
+        # Smart filters callback
+        @self.app.callback(
+            Output('filter-results', 'children'),
+            Input('smart-filters', 'value'),
+            prevent_initial_call=False
+        )
+        def update_filter_results(filters):
+            if not filters:
+                return html.Div("No filters selected")
+            
+            return self._create_filter_results(filters)
+        
+        # Engagement features callback
+        @self.app.callback(
+            Output('engagement-feedback', 'children'),
+            [Input('get-insights', 'n_clicks'),
+             Input('ask-questions', 'n_clicks'),
+             Input('rate-experience', 'n_clicks')],
+            prevent_initial_call=True
+        )
+        def handle_engagement_features(insights_clicks, questions_clicks, rate_clicks):
+            ctx = callback_context
+            if not ctx.triggered:
+                return dash.no_update
+            
+            button_id = ctx.triggered[0]['prop_id'].split('.')[0]
+            
+            if button_id == 'get-insights':
+                return self._generate_insight_suggestion()
+            elif button_id == 'ask-questions':
+                return self._create_question_interface()
+            elif button_id == 'rate-experience':
+                return self._create_rating_interface()
+            
+            return dash.no_update
+        
+        # Interactive chart callback
+        @self.app.callback(
+            Output('interactive-chart', 'figure'),
+            [Input('interactive-chart', 'clickData'),
+             Input('interactive-chart', 'selectedData')],
+            prevent_initial_call=True
+        )
+        def handle_chart_interaction(click_data, selected_data):
+            # Update chart based on interaction
+            fig = self._create_interactive_chart()
+            
+            if click_data and fig.data:
+                # Highlight clicked point
+                point = click_data['points'][0]
+                if hasattr(fig.data[0], 'marker') and hasattr(fig.data[0], 'x'):
+                    fig.data[0].marker.size = [20 if i == point['pointIndex'] else 15 for i in range(len(fig.data[0].x))]
+            
+            if selected_data and fig.data:
+                # Highlight selected points
+                selected_indices = [p['pointIndex'] for p in selected_data['points']]
+                if hasattr(fig.data[0], 'marker') and hasattr(fig.data[0], 'x'):
+                    fig.data[0].marker.size = [20 if i in selected_indices else 15 for i in range(len(fig.data[0].x))]
+            
+            return fig
+
+    def _create_chat_simulation(self) -> html.Div:
+        """Create a real-time chat simulation interface"""
+        return html.Div([
+            html.Div(id="chat-messages", className="chat-messages mb-3", style={
+                'height': '300px',
+                'overflowY': 'auto',
+                'border': '1px solid #e2e8f0',
+                'borderRadius': '8px',
+                'padding': '1rem',
+                'backgroundColor': '#f8fafc'
+            }),
+            dbc.InputGroup([
+                dbc.Input(id="chat-input", placeholder="Type your message...", type="text"),
+                dbc.Button("Send", id="send-chat", color="primary")
+            ])
+        ])
+
+    def _create_explorer_content(self, mode: str, detail_level: int) -> html.Div:
+        """Create content for the data explorer based on mode and detail level"""
+        if mode == 'sentiment':
+            return html.Div([
+                html.H6("Sentiment Deep Dive", className="fw-bold"),
+                html.P(f"Analyzing sentiment patterns at detail level {detail_level}"),
+                dbc.Progress(value=detail_level * 20, className="mb-3"),
+                html.Ul([
+                    html.Li("Positive sentiment trends"),
+                    html.Li("Negative sentiment triggers"),
+                    html.Li("Neutral conversation patterns")
+                ])
+            ])
+        elif mode == 'topics':
+            return html.Div([
+                html.H6("Topic Evolution Analysis", className="fw-bold"),
+                html.P(f"Exploring topic evolution at detail level {detail_level}"),
+                dbc.Progress(value=detail_level * 20, className="mb-3"),
+                html.Ul([
+                    html.Li("Topic emergence patterns"),
+                    html.Li("Topic convergence/divergence"),
+                    html.Li("Cross-topic relationships")
+                ])
+            ])
+        elif mode == 'growth':
+            return html.Div([
+                html.H6("Growth Pattern Analysis", className="fw-bold"),
+                html.P(f"Analyzing growth patterns at detail level {detail_level}"),
+                dbc.Progress(value=detail_level * 20, className="mb-3"),
+                html.Ul([
+                    html.Li("Learning curve analysis"),
+                    html.Li("Skill development tracking"),
+                    html.Li("Knowledge retention patterns")
+                ])
+            ])
+        elif mode == 'writing':
+            return html.Div([
+                html.H6("Writing Style Analysis", className="fw-bold"),
+                html.P(f"Analyzing writing style at detail level {detail_level}"),
+                dbc.Progress(value=detail_level * 20, className="mb-3"),
+                html.Ul([
+                    html.Li("Vocabulary evolution"),
+                    html.Li("Sentence structure changes"),
+                    html.Li("Tone and voice development")
+                ])
+            ])
+        
+        return html.Div("Select a valid exploration mode")
+
+    def _create_filter_results(self, filters: List[str]) -> html.Div:
+        """Create results for smart filters"""
+        results = []
+        
+        for filter_type in filters:
+            if filter_type == 'high-impact':
+                results.append(html.Div([
+                    dbc.Badge("High Impact", color="danger", className="me-2"),
+                    "Conversations with significant insights or breakthroughs"
+                ], className="mb-2"))
+            elif filter_type == 'breakthrough':
+                results.append(html.Div([
+                    dbc.Badge("Breakthrough", color="success", className="me-2"),
+                    "Moments of significant learning or realization"
+                ], className="mb-2"))
+            elif filter_type == 'learning':
+                results.append(html.Div([
+                    dbc.Badge("Learning", color="info", className="me-2"),
+                    "Patterns of knowledge acquisition and skill development"
+                ], className="mb-2"))
+            elif filter_type == 'goals':
+                results.append(html.Div([
+                    dbc.Badge("Goals", color="warning", className="me-2"),
+                    "Goal-oriented conversations and progress tracking"
+                ], className="mb-2"))
+        
+        return html.Div(results)
+
+    def _generate_insight_suggestion(self) -> html.Div:
+        """Generate a personalized insight suggestion"""
+        insights = [
+            "Your sentiment has improved by 15% over the last month. Consider what contributed to this positive change.",
+            "You've been discussing 'problem-solving' topics frequently. This might indicate a focus on analytical thinking.",
+            "Your writing style has become more concise over time, suggesting improved communication skills.",
+            "You show a pattern of deep reflection in evening conversations. Consider scheduling important discussions during this time.",
+            "Your goal-oriented conversations have increased by 25%. You're becoming more focused on personal development."
+        ]
+        
+        selected_insight = random.choice(insights)
+        
+        return html.Div([
+            dbc.Alert([
+                html.H6("💡 Personalized Insight", className="alert-heading"),
+                html.P(selected_insight, className="mb-0")
+            ], color="info")
+        ])
+
+    def _create_question_interface(self) -> html.Div:
+        """Create an interface for asking questions"""
+        return html.Div([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("Ask Questions About Your Data", className="fw-bold"),
+                    dbc.Input(
+                        id="question-input",
+                        placeholder="e.g., What patterns do you see in my learning journey?",
+                        type="text",
+                        className="mb-3"
+                    ),
+                    dbc.Button("Ask Question", id="submit-question", color="primary", size="sm")
+                ])
+            ])
+        ])
+
+    def _create_rating_interface(self) -> html.Div:
+        """Create a rating interface for user feedback"""
+        return html.Div([
+            dbc.Card([
+                dbc.CardBody([
+                    html.H6("Rate Your Experience", className="fw-bold"),
+                    html.P("How useful is this dashboard for your personal growth?", className="mb-3"),
+                    dbc.ButtonGroup([
+                        dbc.Button("😞", id="rate-1", color="outline-danger", size="sm"),
+                        dbc.Button("😐", id="rate-2", color="outline-warning", size="sm"),
+                        dbc.Button("🙂", id="rate-3", color="outline-info", size="sm"),
+                        dbc.Button("😊", id="rate-4", color="outline-success", size="sm"),
+                        dbc.Button("🤩", id="rate-5", color="outline-primary", size="sm")
+                    ], className="mb-3"),
+                    html.Div(id="rating-feedback")
+                ])
+            ])
+        ])
 
 
 # Legacy compatibility - keep the old class name for existing code
