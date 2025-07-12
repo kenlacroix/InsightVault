@@ -1005,7 +1005,10 @@ async def send_message_stream(
             yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '[LIGHTBULB]'})}\n\n"
             await asyncio.sleep(0.8)
             
-            # Generate the actual response
+            # Yield a status before calling OpenAI (blocking call)
+            yield f"data: {json.dumps({'stage': 'openai_wait', 'status': 'Waiting for OpenAI API response...', 'icon': '[AI]'})}\n\n"
+            
+            # Generate the actual response (blocking)
             ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
             
             # Final response
