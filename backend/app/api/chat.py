@@ -9,15 +9,18 @@ from ..database import get_sync_db
 from ..models import User, Conversation
 from ..auth import get_current_user
 import openai
+from ..config import Config
 
 # Initialize OpenAI client
 openai_client = None
 try:
-    api_key = os.getenv('OPENAI_API_KEY')
-    if api_key:
-        openai_client = openai.OpenAI(api_key=api_key)
+    if Config.OPENAI_API_KEY:
+        openai_client = openai.OpenAI(api_key=Config.OPENAI_API_KEY)
+        print("✅ OpenAI client initialized successfully")
+    else:
+        print("⚠️ OpenAI API key not configured - using fallback responses")
 except Exception as e:
-    print(f"OpenAI client initialization failed: {e}")
+    print(f"❌ OpenAI client initialization failed: {e}")
 
 router = APIRouter(prefix="/chat", tags=["chat"])
 
@@ -36,114 +39,160 @@ class ChatResponse(BaseModel):
     insights: Optional[dict] = None
     timestamp: datetime
 
+def detect_dynamic_topics_from_content(content: str) -> dict:
+    """
+    Dynamically detect topics from conversation content using keyword analysis and context.
+    This adapts to whatever topics the user actually discusses.
+    """
+    content_lower = content.lower()
+    detected_topics = {}
+    
+    # Dynamic keyword detection with context
+    topic_patterns = {
+        # Technology & Programming
+        'programming': {
+            'keywords': ['code', 'programming', 'python', 'javascript', 'java', 'c++', 'algorithm', 'function', 'variable', 'debug', 'error', 'bug', 'git', 'repository', 'api', 'database', 'server', 'client', 'framework', 'library', 'package', 'install', 'compile', 'deploy', 'test', 'unit test', 'integration'],
+            'context_words': ['developer', 'software', 'application', 'website', 'app', 'system', 'platform', 'tool', 'technology', 'tech', 'coding', 'development']
+        },
+        
+        # Business & Career
+        'business': {
+            'keywords': ['business', 'startup', 'entrepreneur', 'company', 'market', 'customer', 'revenue', 'profit', 'investment', 'funding', 'strategy', 'planning', 'management', 'leadership', 'team', 'project', 'goal', 'objective', 'target', 'success', 'growth', 'scale', 'competition', 'industry'],
+            'context_words': ['work', 'career', 'job', 'professional', 'enterprise', 'organization', 'venture', 'initiative']
+        },
+        
+        # Health & Wellness
+        'health': {
+            'keywords': ['health', 'fitness', 'exercise', 'workout', 'gym', 'nutrition', 'diet', 'food', 'sleep', 'rest', 'recovery', 'energy', 'vitality', 'strength', 'endurance', 'wellness', 'medical', 'doctor', 'treatment', 'therapy', 'healing', 'pain', 'symptom', 'condition', 'medication'],
+            'context_words': ['body', 'physical', 'mental', 'wellbeing', 'lifestyle', 'routine', 'habit', 'self-care']
+        },
+        
+        # Relationships & Social
+        'relationships': {
+            'keywords': ['relationship', 'partner', 'boyfriend', 'girlfriend', 'spouse', 'marriage', 'dating', 'family', 'friend', 'social', 'communication', 'trust', 'love', 'intimacy', 'connection', 'bond', 'support', 'care', 'understanding', 'conflict', 'argument', 'resolution', 'boundary'],
+            'context_words': ['people', 'person', 'human', 'interaction', 'social', 'emotional', 'personal']
+        },
+        
+        # Spirituality & Personal Growth
+        'spirituality': {
+            'keywords': ['spiritual', 'meditation', 'mindfulness', 'zen', 'buddhism', 'consciousness', 'awareness', 'energy', 'chakra', 'aura', 'vibration', 'manifestation', 'law of attraction', 'abundance', 'gratitude', 'forgiveness', 'healing', 'purpose', 'meaning', 'enlightenment', 'awakening', 'grounding', 'centered'],
+            'context_words': ['soul', 'spirit', 'inner', 'divine', 'sacred', 'transcendence', 'transformation', 'growth']
+        },
+        
+        # Education & Learning
+        'education': {
+            'keywords': ['learn', 'learning', 'education', 'study', 'course', 'class', 'school', 'university', 'college', 'degree', 'certificate', 'skill', 'knowledge', 'wisdom', 'research', 'reading', 'writing', 'analysis', 'understanding', 'comprehension', 'mastery', 'expertise'],
+            'context_words': ['academic', 'intellectual', 'cognitive', 'mental', 'brain', 'mind', 'thinking', 'knowledge']
+        },
+        
+        # Creativity & Arts
+        'creativity': {
+            'keywords': ['creative', 'creativity', 'art', 'artist', 'design', 'designer', 'music', 'musician', 'writing', 'writer', 'poetry', 'poem', 'story', 'novel', 'painting', 'drawing', 'photography', 'film', 'video', 'performance', 'expression', 'inspiration', 'imagination', 'innovation'],
+            'context_words': ['aesthetic', 'beauty', 'expression', 'craft', 'talent', 'skill', 'passion', 'vision']
+        },
+        
+        # Finance & Money
+        'finance': {
+            'keywords': ['money', 'finance', 'financial', 'budget', 'saving', 'investment', 'stock', 'market', 'trading', 'banking', 'credit', 'debt', 'loan', 'mortgage', 'insurance', 'tax', 'income', 'expense', 'wealth', 'rich', 'poor', 'economy', 'economic'],
+            'context_words': ['cash', 'dollar', 'currency', 'payment', 'transaction', 'account', 'portfolio']
+        },
+        
+        # Travel & Adventure
+        'travel': {
+            'keywords': ['travel', 'trip', 'vacation', 'journey', 'adventure', 'explore', 'destination', 'country', 'city', 'place', 'location', 'hotel', 'flight', 'booking', 'reservation', 'tour', 'guide', 'culture', 'experience', 'memory', 'sightseeing'],
+            'context_words': ['world', 'global', 'international', 'foreign', 'local', 'visit', 'see', 'discover']
+        },
+        
+        # Politics & Society
+        'politics': {
+            'keywords': ['politics', 'political', 'government', 'policy', 'law', 'legal', 'rights', 'freedom', 'democracy', 'election', 'vote', 'candidate', 'party', 'social', 'society', 'community', 'culture', 'tradition', 'change', 'reform', 'justice', 'equality'],
+            'context_words': ['public', 'civil', 'national', 'international', 'global', 'social', 'cultural']
+        },
+        
+        # Science & Research
+        'science': {
+            'keywords': ['science', 'scientific', 'research', 'study', 'experiment', 'data', 'analysis', 'theory', 'hypothesis', 'evidence', 'discovery', 'innovation', 'technology', 'biology', 'chemistry', 'physics', 'mathematics', 'statistics', 'methodology'],
+            'context_words': ['empirical', 'objective', 'factual', 'evidence-based', 'systematic', 'analytical']
+        }
+    }
+    
+    # Score each topic based on keyword presence and context
+    for topic, pattern in topic_patterns.items():
+        score = 0
+        keyword_matches = []
+        context_matches = []
+        
+        # Check for keyword matches
+        for keyword in pattern['keywords']:
+            if keyword in content_lower:
+                score += 2  # Higher weight for specific keywords
+                keyword_matches.append(keyword)
+        
+        # Check for context word matches
+        for context_word in pattern['context_words']:
+            if context_word in content_lower:
+                score += 1  # Lower weight for context words
+                context_matches.append(context_word)
+        
+        # Only include topics with significant relevance
+        if score >= 2:
+            detected_topics[topic] = {
+                'score': score,
+                'keyword_matches': keyword_matches,
+                'context_matches': context_matches,
+                'confidence': min(score / 5.0, 1.0)  # Normalize confidence
+            }
+    
+    # Sort by score (highest first)
+    detected_topics = dict(sorted(detected_topics.items(), key=lambda x: x[1]['score'], reverse=True))
+    
+    return detected_topics
+
 def analyze_conversation_content(content: str) -> dict:
     """
-    Analyze conversation content and extract insights.
-    This is a simplified version - you can enhance this with more sophisticated analysis.
+    Analyze conversation content and extract comprehensive insights using dynamic topic detection.
     """
     insights = {
         "word_count": len(content.split()),
         "character_count": len(content),
         "sentences": len([s for s in content.split('.') if s.strip()]),
         "topics": [],
+        "dynamic_topics": {},
         "sentiment": "neutral",
         "key_insights": [],
         "programming_languages": [],
         "technologies": [],
         "concepts": [],
-        "difficulty_level": "intermediate"
+        "difficulty_level": "intermediate",
+        "life_areas": [],
+        "emotional_themes": [],
+        "personal_growth_aspects": []
     }
     
-    # Simple topic detection
-    topics = []
     content_lower = content.lower()
     
-    # Programming-specific analysis
-    programming_languages = []
-    technologies = []
-    concepts = []
+    # Dynamic topic detection
+    dynamic_topics = detect_dynamic_topics_from_content(content)
+    insights["dynamic_topics"] = dynamic_topics
     
-    # Programming languages
-    languages = {
-        'python': ['python', 'py', 'django', 'flask', 'pandas', 'numpy', 'matplotlib'],
-        'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular', 'typescript'],
-        'java': ['java', 'spring', 'android', 'kotlin'],
-        'c++': ['c++', 'cpp', 'c plus plus'],
-        'c#': ['c#', 'csharp', '.net', 'asp.net'],
-        'go': ['go', 'golang'],
-        'rust': ['rust'],
-        'php': ['php', 'laravel', 'wordpress'],
-        'ruby': ['ruby', 'rails'],
-        'swift': ['swift', 'ios', 'xcode'],
-        'sql': ['sql', 'mysql', 'postgresql', 'sqlite', 'mongodb']
-    }
-    
-    for lang, keywords in languages.items():
-        if any(keyword in content_lower for keyword in keywords):
-            programming_languages.append(lang)
-    
-    # Technologies and frameworks
-    tech_keywords = {
-        'web_development': ['html', 'css', 'bootstrap', 'tailwind', 'responsive', 'frontend', 'backend'],
-        'databases': ['database', 'sql', 'nosql', 'redis', 'elasticsearch', 'firebase'],
-        'cloud': ['aws', 'azure', 'gcp', 'docker', 'kubernetes', 'microservices'],
-        'ai_ml': ['machine learning', 'ai', 'neural network', 'tensorflow', 'pytorch', 'scikit-learn'],
-        'mobile': ['mobile', 'ios', 'android', 'react native', 'flutter'],
-        'devops': ['ci/cd', 'jenkins', 'git', 'github', 'gitlab', 'deployment']
-    }
-    
-    for tech, keywords in tech_keywords.items():
-        if any(keyword in content_lower for keyword in keywords):
-            technologies.append(tech)
-    
-    # Programming concepts
-    concept_keywords = {
-        'algorithms': ['algorithm', 'data structure', 'sorting', 'searching', 'complexity'],
-        'design_patterns': ['design pattern', 'singleton', 'factory', 'observer', 'mvc'],
-        'testing': ['test', 'unit test', 'integration test', 'tdd', 'bdd'],
-        'security': ['security', 'authentication', 'authorization', 'encryption', 'oauth'],
-        'performance': ['performance', 'optimization', 'caching', 'scalability'],
-        'architecture': ['architecture', 'microservices', 'monolith', 'api', 'rest']
-    }
-    
-    for concept, keywords in concept_keywords.items():
-        if any(keyword in content_lower for keyword in keywords):
-            concepts.append(concept)
-    
-    insights["programming_languages"] = programming_languages
-    insights["technologies"] = technologies
-    insights["concepts"] = concepts
-    
-    if any(word in content_lower for word in ['code', 'programming', 'python', 'javascript']):
-        topics.append('Programming')
-    if any(word in content_lower for word in ['business', 'startup', 'entrepreneur']):
-        topics.append('Business')
-    if any(word in content_lower for word in ['health', 'fitness', 'exercise']):
-        topics.append('Health & Fitness')
-    if any(word in content_lower for word in ['learning', 'education', 'study']):
-        topics.append('Education')
-    if any(word in content_lower for word in ['relationship', 'family', 'friend']):
-        topics.append('Relationships')
-    if any(word in content_lower for word in ['goal', 'plan', 'future']):
-        topics.append('Planning & Goals')
-    
+    # Convert dynamic topics to topic list
+    topics = list(dynamic_topics.keys())
     insights["topics"] = topics
     
-    # Determine difficulty level based on content
-    beginner_keywords = ['beginner', 'basic', 'simple', 'tutorial', 'learn', 'getting started']
-    advanced_keywords = ['advanced', 'complex', 'optimization', 'architecture', 'design patterns', 'algorithms']
+    # Enhanced sentiment analysis with more nuanced detection
+    positive_words = [
+        'good', 'great', 'excellent', 'amazing', 'wonderful', 'happy', 'love', 'enjoy', 'solved', 'working', 'success',
+        'grateful', 'blessed', 'peaceful', 'content', 'fulfilled', 'inspired', 'motivated', 'confident', 'strong', 
+        'healed', 'transformed', 'breakthrough', 'excited', 'thrilled', 'elated', 'joyful', 'delighted', 'satisfied',
+        'proud', 'accomplished', 'achieved', 'progress', 'improvement', 'growth', 'development', 'advancement'
+    ]
     
-    beginner_count = sum(1 for word in beginner_keywords if word in content_lower)
-    advanced_count = sum(1 for word in advanced_keywords if word in content_lower)
-    
-    if advanced_count > beginner_count:
-        insights["difficulty_level"] = "advanced"
-    elif beginner_count > advanced_count:
-        insights["difficulty_level"] = "beginner"
-    
-    # Simple sentiment analysis
-    positive_words = ['good', 'great', 'excellent', 'amazing', 'wonderful', 'happy', 'love', 'enjoy', 'solved', 'working', 'success']
-    negative_words = ['bad', 'terrible', 'awful', 'hate', 'dislike', 'sad', 'angry', 'frustrated', 'error', 'bug', 'broken', 'stuck']
+    negative_words = [
+        'bad', 'terrible', 'awful', 'hate', 'dislike', 'sad', 'angry', 'frustrated', 'error', 'bug', 'broken', 'stuck',
+        'anxious', 'depressed', 'overwhelmed', 'lost', 'confused', 'hurt', 'pain', 'suffering', 'struggle', 'difficult', 
+        'challenging', 'worried', 'scared', 'afraid', 'terrified', 'hopeless', 'despair', 'disappointed', 'upset',
+        'irritated', 'annoyed', 'bothered', 'troubled', 'concerned', 'stressed', 'tired', 'exhausted', 'drained'
+    ]
     
     positive_count = sum(1 for word in positive_words if word in content_lower)
     negative_count = sum(1 for word in negative_words if word in content_lower)
@@ -153,19 +202,172 @@ def analyze_conversation_content(content: str) -> dict:
     elif negative_count > positive_count:
         insights["sentiment"] = "negative"
     
-    # Key insights
+    # Programming-specific analysis (only if programming topics detected)
+    if 'programming' in dynamic_topics:
+        programming_languages = []
+        technologies = []
+        concepts = []
+        
+        # Programming languages
+        languages = {
+            'python': ['python', 'py', 'django', 'flask', 'pandas', 'numpy', 'matplotlib'],
+            'javascript': ['javascript', 'js', 'node', 'react', 'vue', 'angular', 'typescript'],
+            'java': ['java', 'spring', 'android', 'kotlin'],
+            'c++': ['c++', 'cpp', 'c plus plus'],
+            'c#': ['c#', 'csharp', '.net', 'asp.net'],
+            'go': ['go', 'golang'],
+            'rust': ['rust'],
+            'php': ['php', 'laravel', 'wordpress'],
+            'ruby': ['ruby', 'rails'],
+            'swift': ['swift', 'ios', 'xcode'],
+            'sql': ['sql', 'mysql', 'postgresql', 'sqlite', 'mongodb']
+        }
+        
+        for lang, keywords in languages.items():
+            if any(keyword in content_lower for keyword in keywords):
+                programming_languages.append(lang)
+        
+        # Technologies and frameworks
+        tech_keywords = {
+            'web_development': ['html', 'css', 'bootstrap', 'tailwind', 'responsive', 'frontend', 'backend'],
+            'databases': ['database', 'sql', 'nosql', 'redis', 'elasticsearch', 'firebase'],
+            'cloud': ['aws', 'azure', 'gcp', 'docker', 'kubernetes', 'microservices'],
+            'ai_ml': ['machine learning', 'ai', 'neural network', 'tensorflow', 'pytorch', 'scikit-learn'],
+            'mobile': ['mobile', 'ios', 'android', 'react native', 'flutter'],
+            'devops': ['ci/cd', 'jenkins', 'git', 'github', 'gitlab', 'deployment']
+        }
+        
+        for tech, keywords in tech_keywords.items():
+            if any(keyword in content_lower for keyword in keywords):
+                technologies.append(tech)
+        
+        # Programming concepts
+        concept_keywords = {
+            'algorithms': ['algorithm', 'data structure', 'sorting', 'searching', 'complexity'],
+            'design_patterns': ['design pattern', 'singleton', 'factory', 'observer', 'mvc'],
+            'testing': ['test', 'unit test', 'integration test', 'tdd', 'bdd'],
+            'security': ['security', 'authentication', 'authorization', 'encryption', 'oauth'],
+            'performance': ['performance', 'optimization', 'caching', 'scalability'],
+            'architecture': ['architecture', 'microservices', 'monolith', 'api', 'rest']
+        }
+        
+        for concept, keywords in concept_keywords.items():
+            if any(keyword in content_lower for keyword in keywords):
+                concepts.append(concept)
+        
+        insights["programming_languages"] = programming_languages
+        insights["technologies"] = technologies
+        insights["concepts"] = concepts
+    
+    # Enhanced key insights based on dynamic topics
     if insights["word_count"] > 500:
         insights["key_insights"].append("This is a substantial conversation with detailed content")
+    
     if len(topics) > 2:
-        insights["key_insights"].append("Covers multiple topics")
+        insights["key_insights"].append(f"Covers multiple areas: {', '.join(topics[:3])}")
+    elif len(topics) == 1:
+        insights["key_insights"].append(f"Focused on {topics[0]}")
+    
     if insights["sentiment"] != "neutral":
         insights["key_insights"].append(f"Overall sentiment is {insights['sentiment']}")
-    if programming_languages:
-        insights["key_insights"].append(f"Discusses {', '.join(programming_languages)} programming")
-    if technologies:
-        insights["key_insights"].append(f"Covers {', '.join(technologies)} technologies")
+    
+    # Add topic-specific insights
+    for topic, data in dynamic_topics.items():
+        if data['confidence'] > 0.6:
+            insights["key_insights"].append(f"Strong focus on {topic} (confidence: {data['confidence']:.1f})")
     
     return insights
+
+def generate_follow_up_prompts(user_question: str, analysis_context: str, detected_topics: dict) -> list:
+    """
+    Generate contextual follow-up prompts based on the user's question and analysis context.
+    """
+    follow_ups = []
+    question_lower = user_question.lower()
+    
+    # Sentiment-related follow-ups
+    if any(word in question_lower for word in ['sentiment', 'positive', 'negative', 'mood', 'emotion', 'mindset']):
+        follow_ups.extend([
+            "How has your emotional state evolved over time across different topics?",
+            "What patterns do you see in your most positive vs challenging conversations?",
+            "How does your positive mindset influence your learning and growth patterns?",
+            "Would you like to explore the connection between your emotional state and productivity?"
+        ])
+    
+    # Programming-related follow-ups
+    if any(word in question_lower for word in ['programming', 'code', 'technical', 'development']) or 'programming' in detected_topics:
+        follow_ups.extend([
+            "How has your programming confidence evolved over time?",
+            "What connections do you see between your programming skills and other life areas?",
+            "How do your programming discussions reflect your problem-solving approach?",
+            "Would you like to analyze your learning progression in specific technologies?"
+        ])
+    
+    # Spiritual/personal growth follow-ups
+    if any(word in question_lower for word in ['spiritual', 'growth', 'development', 'personal', 'mindset']) or 'spirituality' in detected_topics:
+        follow_ups.extend([
+            "How do your different interests contribute to your personal growth?",
+            "What patterns do you see in your self-reflection and learning journey?",
+            "How has your perspective on life evolved through your conversations?",
+            "Would you like to explore the balance between different aspects of your life?"
+        ])
+    
+    # Relationship follow-ups
+    if any(word in question_lower for word in ['relationship', 'social', 'connection', 'people']) or 'relationships' in detected_topics:
+        follow_ups.extend([
+            "How do your relationship discussions reflect your communication style?",
+            "What patterns do you see in your social interactions and connections?",
+            "How do your relationships influence your other areas of interest?",
+            "Would you like to explore your approach to conflict resolution and understanding?"
+        ])
+    
+    # Health/wellness follow-ups
+    if any(word in question_lower for word in ['health', 'wellness', 'fitness', 'wellbeing']) or 'health' in detected_topics:
+        follow_ups.extend([
+            "How do your health discussions connect to your overall lifestyle patterns?",
+            "What does your approach to wellness tell you about your priorities?",
+            "How has your understanding of health and wellbeing evolved?",
+            "Would you like to explore the connection between physical and mental wellbeing?"
+        ])
+    
+    # Business/career follow-ups
+    if any(word in question_lower for word in ['business', 'career', 'work', 'professional']) or 'business' in detected_topics:
+        follow_ups.extend([
+            "How do your business interests align with your personal values?",
+            "What patterns do you see in your professional development?",
+            "How has your approach to work and career evolved over time?",
+            "Would you like to explore the balance between professional and personal growth?"
+        ])
+    
+    # Creativity follow-ups
+    if any(word in question_lower for word in ['creative', 'art', 'creativity', 'expression']) or 'creativity' in detected_topics:
+        follow_ups.extend([
+            "How does your creativity influence your other areas of interest?",
+            "What patterns do you see in your creative expression and inspiration?",
+            "How has your creative process evolved through your conversations?",
+            "Would you like to explore the connection between creativity and problem-solving?"
+        ])
+    
+    # Cross-topic connection follow-ups
+    if len(detected_topics) > 2:
+        follow_ups.extend([
+            "How do your different interests connect and influence each other?",
+            "What patterns do you see across your various areas of discussion?",
+            "How does your diverse range of interests contribute to your overall growth?",
+            "Would you like to explore how your different passions complement each other?"
+        ])
+    
+    # General growth and pattern follow-ups
+    follow_ups.extend([
+        "What trends do you notice in your conversation topics over time?",
+        "How has your approach to learning and exploration evolved?",
+        "What does your conversation history reveal about your core values?",
+        "Would you like to explore specific breakthroughs or turning points in your journey?"
+    ])
+    
+    # Remove duplicates and limit to 4-6 most relevant
+    unique_follow_ups = list(dict.fromkeys(follow_ups))  # Preserve order while removing duplicates
+    return unique_follow_ups[:6]
 
 def generate_ai_response_with_gpt(user_message: str, conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """
@@ -179,22 +381,24 @@ def generate_ai_response_with_gpt(user_message: str, conversations: List[Convers
         context_data = prepare_conversation_context(conversations, focus_conversation)
         
         # Create a comprehensive prompt
-        system_prompt = """You are an AI assistant that helps users analyze their ChatGPT conversation history. You have access to detailed analytics about their conversations including:
+        system_prompt = """You are an AI assistant that provides personalized analysis of ChatGPT conversation history. You adapt to whatever topics each user actually discusses - whether that's programming, spirituality, relationships, health, business, creativity, travel, politics, science, or any other topics.
 
-- Programming languages and technologies discussed
+You have access to dynamic topic analysis that identifies what each user actually talks about, including:
+- Dynamically detected topics based on their actual conversation content
+- Topic confidence scores and conversation counts
 - Sentiment analysis and emotional patterns
-- Learning progression and difficulty levels
-- Monthly activity trends
-- Key insights and patterns
+- Programming languages and technologies (when relevant)
+- Recent conversation trends and patterns
 
 Your role is to:
-1. Provide insightful analysis based on the conversation data
-2. Identify patterns and trends in their learning journey
-3. Offer personalized recommendations and observations
-4. Answer specific questions about their programming conversations
-5. Help them understand their growth and development
+1. Provide insights based on the user's ACTUAL conversation topics (not assumptions)
+2. Reference the specific topics they discuss and their confidence levels
+3. Offer personalized observations about their unique conversation patterns
+4. Connect insights across different topics when relevant
+5. Adapt your analysis to whatever life areas they focus on
+6. Provide holistic insights that reflect their individual interests and growth journey
 
-Be conversational, insightful, and specific. Reference the data provided and offer meaningful observations."""
+Be conversational, insightful, and specific. Reference the dynamic topic data provided and offer meaningful observations about their personal conversation patterns, whatever topics they discuss."""
 
         user_prompt = f"""
 User Question: {user_message}
@@ -202,7 +406,7 @@ User Question: {user_message}
 Conversation Context:
 {context_data}
 
-Please provide a comprehensive, insightful response that addresses the user's question using the conversation data provided. Be specific, reference patterns you see, and offer meaningful insights about their programming journey.
+Please provide a comprehensive, insightful response that addresses the user's question using the conversation data provided. Be specific, reference patterns you see, and offer meaningful insights about their personal growth journey across all life areas - programming, spirituality, relationships, health, business, personal development, and any other topics they discuss.
 """
 
         # Call ChatGPT API
@@ -216,14 +420,32 @@ Please provide a comprehensive, insightful response that addresses the user's qu
             temperature=0.7
         )
         
-        return response.choices[0].message.content
+        ai_response = response.choices[0].message.content or ""
+        
+        # Generate follow-up prompts
+        all_dynamic_topics = {}
+        for conv in conversations:
+            insights = analyze_conversation_content(conv.content)
+            for topic, data in insights.get('dynamic_topics', {}).items():
+                if topic not in all_dynamic_topics:
+                    all_dynamic_topics[topic] = data
+        
+        follow_up_prompts = generate_follow_up_prompts(user_message, context_data, all_dynamic_topics)
+        
+        # Add follow-up prompts to the response
+        if follow_up_prompts:
+            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            for i, prompt in enumerate(follow_up_prompts, 1):
+                ai_response += f"{i}. {prompt}\n"
+        
+        return ai_response
         
     except Exception as e:
         return f"Error generating AI response: {str(e)}"
 
 def prepare_conversation_context(conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """
-    Prepare rich context data for ChatGPT analysis.
+    Prepare rich context data for ChatGPT analysis using dynamic topic detection.
     """
     if focus_conversation:
         # Focus on specific conversation
@@ -235,10 +457,11 @@ Date: {focus_conversation.created_at.isoformat() if focus_conversation.created_a
 
 Content Analysis:
 - Word Count: {insights['word_count']}
+- Detected Topics: {', '.join(insights.get('topics', []))}
+- Dynamic Topic Scores: {', '.join([f"{topic} ({data['confidence']:.1f})" for topic, data in insights.get('dynamic_topics', {}).items()])}
 - Programming Languages: {', '.join(insights.get('programming_languages', []))}
 - Technologies: {', '.join(insights.get('technologies', []))}
 - Concepts: {', '.join(insights.get('concepts', []))}
-- Difficulty Level: {insights.get('difficulty_level', 'intermediate')}
 - Sentiment: {insights['sentiment']}
 - Key Insights: {'; '.join(insights['key_insights'])}
 
@@ -246,52 +469,96 @@ Conversation Content (first 2000 characters):
 {focus_conversation.content[:2000]}{'...' if len(focus_conversation.content) > 2000 else ''}
 """
     else:
-        # Analyze all conversations
+        # Analyze all conversations dynamically
         total_conversations = len(conversations)
-        programming_conversations = []
-        all_languages = []
-        all_technologies = []
-        all_concepts = []
+        all_dynamic_topics = {}
+        topic_conversations = {}
         sentiment_counts = {"positive": 0, "negative": 0, "neutral": 0}
         
+        # Collect all dynamic topics and categorize conversations
         for conv in conversations:
             insights = analyze_conversation_content(conv.content)
             sentiment_counts[insights["sentiment"]] += 1
             
-            if 'Programming' in insights["topics"]:
-                programming_conversations.append((conv, insights))
+            # Aggregate dynamic topics
+            for topic, data in insights.get('dynamic_topics', {}).items():
+                if topic not in all_dynamic_topics:
+                    all_dynamic_topics[topic] = {
+                        'total_score': 0,
+                        'conversation_count': 0,
+                        'avg_confidence': 0,
+                        'conversations': []
+                    }
+                
+                all_dynamic_topics[topic]['total_score'] += data['score']
+                all_dynamic_topics[topic]['conversation_count'] += 1
+                all_dynamic_topics[topic]['conversations'].append((conv, insights))
+            
+            # Categorize by primary topic
+            if insights.get('topics'):
+                primary_topic = insights['topics'][0]  # Highest scoring topic
+                if primary_topic not in topic_conversations:
+                    topic_conversations[primary_topic] = []
+                topic_conversations[primary_topic].append((conv, insights))
+        
+        # Calculate average confidence for each topic
+        for topic, data in all_dynamic_topics.items():
+            data['avg_confidence'] = data['total_score'] / (data['conversation_count'] * 5.0)  # Normalize
+        
+        # Sort topics by conversation count and confidence
+        sorted_topics = sorted(all_dynamic_topics.items(), 
+                             key=lambda x: (x[1]['conversation_count'], x[1]['avg_confidence']), 
+                             reverse=True)
+        
+        # Build context string
+        context_parts = [f"OVERALL CONVERSATION ANALYTICS:\nTotal Conversations: {total_conversations}\n"]
+        
+        # Dynamic topic breakdown
+        context_parts.append("DYNAMIC TOPIC ANALYSIS:")
+        for topic, data in sorted_topics[:8]:  # Top 8 topics
+            context_parts.append(f"- {topic.title()}: {data['conversation_count']} conversations (avg confidence: {data['avg_confidence']:.2f})")
+        
+        # Programming analysis (if relevant)
+        if 'programming' in all_dynamic_topics:
+            programming_convos = all_dynamic_topics['programming']['conversations']
+            all_languages = []
+            all_technologies = []
+            all_concepts = []
+            
+            for _, insights in programming_convos:
                 all_languages.extend(insights.get('programming_languages', []))
                 all_technologies.extend(insights.get('technologies', []))
                 all_concepts.extend(insights.get('concepts', []))
+            
+            from collections import Counter
+            lang_counts = Counter(all_languages)
+            tech_counts = Counter(all_technologies)
+            concept_counts = Counter(all_concepts)
+            
+            top_languages = [lang for lang, _ in lang_counts.most_common(5)]
+            top_technologies = [tech for tech, _ in tech_counts.most_common(5)]
+            top_concepts = [concept for concept, _ in concept_counts.most_common(5)]
+            
+            context_parts.append(f"\nPROGRAMMING ANALYSIS:")
+            context_parts.append(f"- Top Languages: {', '.join(top_languages) if top_languages else 'Various'}")
+            context_parts.append(f"- Top Technologies: {', '.join(top_technologies) if top_technologies else 'Various'}")
+            context_parts.append(f"- Key Concepts: {', '.join(top_concepts) if top_concepts else 'Various'}")
         
-        # Calculate statistics
-        from collections import Counter
-        lang_counts = Counter(all_languages)
-        tech_counts = Counter(all_technologies)
-        concept_counts = Counter(all_concepts)
+        # Sentiment distribution
+        context_parts.append(f"\nSENTIMENT DISTRIBUTION:")
+        context_parts.append(f"- Positive: {sentiment_counts['positive']} conversations")
+        context_parts.append(f"- Neutral: {sentiment_counts['neutral']} conversations")
+        context_parts.append(f"- Negative: {sentiment_counts['negative']} conversations")
         
-        top_languages = [lang for lang, _ in lang_counts.most_common(5)]
-        top_technologies = [tech for tech, _ in tech_counts.most_common(5)]
-        top_concepts = [concept for concept, _ in concept_counts.most_common(5)]
+        # Recent conversations by topic
+        context_parts.append(f"\nRECENT CONVERSATIONS BY TOPIC (last 2 each):")
+        for topic, convos in list(topic_conversations.items())[:6]:  # Top 6 topics
+            recent_convos = convos[-2:]  # Last 2 conversations
+            context_parts.append(f"{topic.title()}:")
+            for conv, insights in recent_convos:
+                context_parts.append(f"  - {conv.title or 'Untitled'} ({insights['sentiment']} sentiment)")
         
-        return f"""
-OVERALL CONVERSATION ANALYTICS:
-Total Conversations: {total_conversations}
-Programming Conversations: {len(programming_conversations)}
-
-Programming Analysis:
-- Top Languages: {', '.join(top_languages) if top_languages else 'Various'}
-- Top Technologies: {', '.join(top_technologies) if top_technologies else 'Various'}
-- Key Concepts: {', '.join(top_concepts) if top_concepts else 'Various'}
-
-Sentiment Distribution:
-- Positive: {sentiment_counts['positive']} conversations
-- Neutral: {sentiment_counts['neutral']} conversations  
-- Negative: {sentiment_counts['negative']} conversations
-
-Recent Programming Conversations (last 5):
-{chr(10).join([f"- {conv.title or 'Untitled'} ({insights.get('difficulty_level', 'intermediate')} level, {insights['sentiment']} sentiment)" for conv, insights in programming_conversations[-5:]])}
-"""
+        return '\n'.join(context_parts)
 
 def generate_ai_response(user_message: str, conversations: List[Conversation], focus_conversation: Optional[Conversation] = None) -> str:
     """

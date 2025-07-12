@@ -5,6 +5,7 @@ Uses PySimpleGUI to provide a user-friendly interface for exploring conversation
 
 import os
 import threading
+import json
 from datetime import datetime
 from typing import List, Dict, Any, Optional
 import PySimpleGUI as sg
@@ -40,33 +41,104 @@ class InsightVaultGUI:
         self.search_results = []
         self.is_loading = False
         
+        # Configuration
+        self.config_file = 'config.json'
+        self.config = self._load_config()
+        
         # Initialize AI components if config exists
         self._initialize_ai_components()
         
         # Set theme
         sg.theme('LightBlue3')
     
+    def _load_config(self) -> Dict[str, Any]:
+        """Load configuration from file"""
+        default_config = {
+            "openai_api_key": "",
+            "model": "gpt-4",
+            "max_tokens": 1500,
+            "temperature": 0.7
+        }
+        
+        if os.path.exists(self.config_file):
+            try:
+                with open(self.config_file, 'r') as f:
+                    config = json.load(f)
+                    # Merge with defaults to ensure all keys exist
+                    for key, value in default_config.items():
+                        if key not in config:
+                            config[key] = value
+                    return config
+            except Exception as e:
+                print(f"Error loading config: {e}")
+                return default_config
+        else:
+            return default_config
+    
+    def _save_config(self, config: Dict[str, Any]) -> bool:
+        """Save configuration to file"""
+        try:
+            with open(self.config_file, 'w') as f:
+                json.dump(config, f, indent=4)
+            self.config = config
+            return True
+        except Exception as e:
+            print(f"Error saving config: {e}")
+            return False
+    
     def _initialize_ai_components(self):
         """Initialize AI components if configuration is available"""
-        config_files = ['config.json', 'config.json.example']
+        if self.config.get('openai_api_key') and self.config['openai_api_key'] != "your_openai_api_key_here":
+            try:
+                # Test if we can initialize with the current config
+                self.summarizer = ConversationSummarizer(self.config_file)
+                self.insight_engine = InsightEngine(self.config_file)
+                
+                # Add analytics engine initialization
+                from analytics_engine import AnalyticsEngine
+                self.analytics_engine = AnalyticsEngine(self.config_file)
+                
+                print("AI components initialized successfully")
+                return
+            except Exception as e:
+                print(f"Could not initialize AI components: {e}")
         
-        for config_file in config_files:
-            if os.path.exists(config_file):
-                try:
-                    # Test if we can initialize (even with invalid key)
-                    self.summarizer = ConversationSummarizer(config_file)
-                    self.insight_engine = InsightEngine(config_file)
-                    
-                    # Add analytics engine initialization
-                    from analytics_engine import AnalyticsEngine
-                    self.analytics_engine = AnalyticsEngine(config_file)
-                    
-                    print(f"AI components initialized with {config_file}")
-                    return
-                except Exception as e:
-                    print(f"Could not initialize AI components with {config_file}: {e}")
+        print("AI components not available - API key needed")
+    
+    def _test_api_key(self, api_key: str) -> bool:
+        """Test if the API key is valid"""
+        if not api_key or api_key == "your_openai_api_key_here":
+            return False
         
-        print("AI components not available - config file needed")
+        try:
+            import openai
+            client = openai.OpenAI(api_key=api_key)
+            # Make a simple test call
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": "Hello"}],
+                max_tokens=10
+            )
+            return True
+        except Exception as e:
+            print(f"API key test failed: {e}")
+            return False
+    
+    def _try_initialize_ai_components(self) -> bool:
+        """Try to initialize AI components and return success status"""
+        try:
+            if self.config.get('openai_api_key') and self.config['openai_api_key'] != "your_openai_api_key_here":
+                self.summarizer = ConversationSummarizer(self.config_file)
+                self.insight_engine = InsightEngine(self.config_file)
+                
+                # Add analytics engine initialization
+                from analytics_engine import AnalyticsEngine
+                self.analytics_engine = AnalyticsEngine(self.config_file)
+                
+                return True
+        except Exception as e:
+            print(f"Could not initialize AI components: {e}")
+        return False
     
     def create_main_layout(self) -> List[List[Any]]:
         """Create the main window layout"""
@@ -233,6 +305,31 @@ class InsightVaultGUI:
             ], expand_x=True)]
         ]
         
+        # Settings Tab
+        settings_tab = [
+            [sg.Frame('OpenAI API Configuration', [
+                [sg.Text('API Key:'), sg.Input(self.config.get('openai_api_key', ''), key='-NEW_API_KEY-', size=(50, 1), password_char='*')],
+                [sg.Button('Test API Key', key='-TEST_API_KEY-'), sg.Button('Save Settings', key='-SAVE_SETTINGS-')],
+                [sg.Text('Model:'), sg.Combo(['gpt-4', 'gpt-3.5-turbo'], default_value=self.config.get('model', 'gpt-4'), key='-MODEL-', size=(20, 1))],
+                [sg.Text('Max Tokens:'), sg.Spin([100, 200, 500, 1000, 1500, 2000, 5000], initial_value=self.config.get('max_tokens', 1500), key='-MAX_TOKENS-')],
+                [sg.Text('Temperature:'), sg.Spin([0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9, 1.0], initial_value=self.config.get('temperature', 0.7), key='-TEMPERATURE-')],
+                [sg.Text('Status:', key='-API_STATUS-', text_color='red')]
+            ], expand_x=True)]
+        ]
+        
+        # ChatGPT Chat Tab
+        chat_tab = [
+            [sg.Frame('AI Chat Interface', [
+                [sg.Multiline('Welcome to InsightVault Chat! Load conversations and start chatting with AI.\n\n', 
+                             key='-CHAT_DISPLAY-', size=(70, 20), disabled=True, expand_x=True, expand_y=True)],
+                [sg.Input(key='-CHAT_INPUT-', size=(60, 1), expand_x=True), sg.Button('Send', key='-SEND_CHAT-')],
+                [sg.Button('Analyze Conversations', key='-ANALYZE_CONV-'), 
+                 sg.Button('Programming Analysis', key='-PROG_ANALYSIS-'),
+                 sg.Button('Growth Analysis', key='-GROWTH_ANALYSIS-'),
+                 sg.Button('Clear Chat', key='-CLEAR_CHAT-')]
+            ], expand_x=True, expand_y=True)]
+        ]
+
         # Left column
         left_column = [
             [sg.Frame('File Management', file_frame, expand_x=True)],
@@ -252,7 +349,9 @@ class InsightVaultGUI:
              sg.Column(right_column, vertical_alignment='top', expand_x=True, expand_y=True)],
             [sg.TabGroup([[
                 sg.Tab('AI Features', ai_tab),
-                sg.Tab('Analytics', analytics_tab)  # NEW analytics tab
+                sg.Tab('Analytics', analytics_tab),  # NEW analytics tab
+                sg.Tab('ChatGPT Chat', chat_tab),  # NEW chat tab
+                sg.Tab('Settings', settings_tab) # NEW settings tab
             ]], expand_x=True, expand_y=True)]
         ]
         
@@ -303,6 +402,48 @@ class InsightVaultGUI:
                           '-BREAKTHROUGH-DETECT-', '-WRITING-STYLE-', '-GOAL-TRACKING-', '-CONCEPT-MAP-',
                           '-EXPORT-CSV-', '-EXPORT-JSON-']:
                 self.handle_analytics_events(event, values, window)
+            
+            # ChatGPT Chat Events
+            elif event == '-SEND_CHAT-':
+                self.handle_chat_input(values['-CHAT_INPUT-'], window)
+            elif event == '-ANALYZE_CONV-':
+                self.handle_analyze_conversations(window)
+            elif event == '-PROG_ANALYSIS-':
+                self.handle_programming_analysis(window)
+            elif event == '-GROWTH_ANALYSIS-':
+                self.handle_growth_analysis(window)
+            elif event == '-CLEAR_CHAT-':
+                self.clear_chat_display(window)
+
+            # Settings events
+            elif event == '-TEST_API_KEY-':
+                api_key = values['-NEW_API_KEY-']
+                if self._test_api_key(api_key):
+                    if window and window['-API_STATUS-']:
+                        window['-API_STATUS-'].update(value='API Key is valid!')
+                    sg.popup('API Key is valid!', title='API Key Test')
+                else:
+                    if window and window['-API_STATUS-']:
+                        window['-API_STATUS-'].update(value='API Key is invalid!')
+                    sg.popup_error('API Key is invalid. Please check your API key.', title='API Key Error')
+            
+            elif event == '-SAVE_SETTINGS-':
+                # Update config with new values
+                self.config['openai_api_key'] = values['-NEW_API_KEY-']
+                self.config['model'] = values['-MODEL-']
+                self.config['max_tokens'] = values['-MAX_TOKENS-']
+                self.config['temperature'] = values['-TEMPERATURE-']
+                
+                if self._save_config(self.config):
+                    # Reinitialize AI components with new config
+                    self._initialize_ai_components()
+                    if window and window['-API_STATUS-']:
+                        window['-API_STATUS-'].update(value='Settings saved successfully!')
+                    sg.popup('Settings saved successfully!', title='Settings Saved')
+                else:
+                    if window and window['-API_STATUS-']:
+                        window['-API_STATUS-'].update(value='Error saving settings!')
+                    sg.popup_error('Error saving settings!', title='Settings Error')
             
             # Phase 4: Performance features
             elif event in ['-PREV_PAGE-', '-NEXT_PAGE-']:
@@ -1091,6 +1232,45 @@ License: MIT
         except Exception as e:
             window['-STATUS-'].update(f'Error loading page: {str(e)}')
             sg.popup_error(f'Error loading page: {str(e)}')
+
+    def handle_chat_input(self, input_text, window):
+        """Handle user input in the ChatGPT chat tab"""
+        if not input_text.strip():
+            return
+        
+        window['-CHAT_INPUT-'].update('') # Clear input field
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + f"You: {input_text}\n")
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: Thinking...\n")
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: ") # Indicate thinking
+        window.refresh()
+
+        # Simulate AI thinking
+        time.sleep(1) # Simulate network delay
+
+        # In a real application, you would send this to your backend
+        # For now, we'll just append a placeholder response
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "This is a placeholder response.\n")
+        window['-CHAT_DISPLAY-'].update(window['-CHAT_DISPLAY-'].get() + "InsightVault: ") # Indicate thinking
+        window.refresh()
+
+    def handle_analyze_conversations(self, window):
+        """Placeholder for analyzing conversations"""
+        sg.popup("Analyze Conversations functionality not yet implemented.")
+
+    def handle_programming_analysis(self, window):
+        """Placeholder for programming analysis"""
+        sg.popup("Programming Analysis functionality not yet implemented.")
+
+    def handle_growth_analysis(self, window):
+        """Placeholder for growth analysis"""
+        sg.popup("Growth Analysis functionality not yet implemented.")
+
+    def clear_chat_display(self, window):
+        """Clear the chat display"""
+        window['-CHAT_DISPLAY-'].update('')
+        window['-CHAT_INPUT-'].update('')
+        window['-CHAT_DISPLAY-'].update("Welcome to InsightVault Chat! Load conversations and start chatting with AI.\n\n")
+        window.refresh()
 
 
 def main():

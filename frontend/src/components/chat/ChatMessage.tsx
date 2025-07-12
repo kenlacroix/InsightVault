@@ -5,6 +5,7 @@ interface ChatMessageProps {
   content: string;
   timestamp: string;
   isLoading?: boolean;
+  onFollowUpClick?: (question: string) => void;
 }
 
 export function ChatMessage({
@@ -12,8 +13,39 @@ export function ChatMessage({
   content,
   timestamp,
   isLoading = false,
+  onFollowUpClick,
 }: ChatMessageProps) {
   const isUser = role === "user";
+
+  // Parse follow-up prompts from assistant messages
+  const parseFollowUpPrompts = (content: string) => {
+    const followUpSection = content.split(
+      "💡 **Follow-up Questions You Might Find Interesting:**"
+    );
+    if (followUpSection.length !== 2) {
+      return { mainContent: content, followUps: [] };
+    }
+
+    const mainContent = followUpSection[0].trim();
+    const followUpText = followUpSection[1].trim();
+
+    // Extract numbered questions
+    const followUpLines = followUpText
+      .split("\n")
+      .filter((line) => line.trim());
+    const followUps = followUpLines
+      .map((line) => {
+        const match = line.match(/^\d+\.\s*(.+)$/);
+        return match ? match[1].trim() : null;
+      })
+      .filter(Boolean) as string[];
+
+    return { mainContent, followUps };
+  };
+
+  const { mainContent, followUps } = isUser
+    ? { mainContent: content, followUps: [] }
+    : parseFollowUpPrompts(content);
 
   return (
     <div className={`flex ${isUser ? "justify-end" : "justify-start"} mb-4`}>
@@ -31,7 +63,29 @@ export function ChatMessage({
               <span>AI is thinking...</span>
             </div>
           ) : (
-            <div className="whitespace-pre-wrap">{content}</div>
+            <>
+              <div className="whitespace-pre-wrap">{mainContent}</div>
+
+              {/* Follow-up prompts */}
+              {followUps.length > 0 && (
+                <div className="mt-4 pt-3 border-t border-gray-200">
+                  <div className="text-sm font-medium text-gray-700 mb-2">
+                    💡 Follow-up Questions:
+                  </div>
+                  <div className="space-y-2">
+                    {followUps.map((question, index) => (
+                      <button
+                        key={index}
+                        onClick={() => onFollowUpClick?.(question)}
+                        className="block w-full text-left text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-50 px-2 py-1 rounded transition-colors duration-200"
+                      >
+                        {question}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
         <div

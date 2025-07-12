@@ -22,6 +22,9 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
   const { token } = useAuth();
   const [messages, setMessages] = useState<Message[]>([]);
   const [isLoading, setIsLoading] = useState(false);
+  const [setInputValue, setSetInputValue] = useState<React.Dispatch<
+    React.SetStateAction<string>
+  > | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -32,6 +35,13 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
+
+  // Handle follow-up prompt clicks
+  const handleFollowUpClick = (question: string) => {
+    if (setInputValue) {
+      setInputValue(question);
+    }
+  };
 
   // Add welcome message
   useEffect(() => {
@@ -146,6 +156,7 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
             role={message.role}
             content={message.content}
             timestamp={message.timestamp}
+            onFollowUpClick={handleFollowUpClick}
           />
         ))}
 
@@ -167,6 +178,7 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
         onSendMessage={sendMessage}
         isLoading={isLoading}
         placeholder="Ask me about your conversations..."
+        setInputValue={setSetInputValue}
       />
     </div>
   );

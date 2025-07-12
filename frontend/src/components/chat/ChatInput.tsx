@@ -7,20 +7,32 @@ interface ChatInputProps {
   onSendMessage: (message: string) => void;
   isLoading?: boolean;
   placeholder?: string;
+  setInputValue?: (
+    setter: React.Dispatch<React.SetStateAction<string>>
+  ) => void;
 }
 
 export function ChatInput({
   onSendMessage,
   isLoading = false,
   placeholder = "Ask me about your conversations...",
+  setInputValue,
 }: ChatInputProps) {
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState<string>("");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Expose setMessage function to parent component
+  useEffect(() => {
+    if (setInputValue) {
+      setInputValue(setMessage);
+    }
+  }, [setInputValue]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    if (message.trim() && !isLoading) {
-      onSendMessage(message.trim());
+    const trimmedMessage = message?.trim() || "";
+    if (trimmedMessage && !isLoading) {
+      onSendMessage(trimmedMessage);
       setMessage("");
     }
   };
@@ -49,8 +61,8 @@ export function ChatInput({
         <div className="flex-1">
           <textarea
             ref={textareaRef}
-            value={message}
-            onChange={(e) => setMessage(e.target.value)}
+            value={message || ""}
+            onChange={(e) => setMessage(e.target.value || "")}
             onKeyPress={handleKeyPress}
             placeholder={placeholder}
             disabled={isLoading}
@@ -61,7 +73,7 @@ export function ChatInput({
         </div>
         <Button
           type="submit"
-          disabled={!message.trim() || isLoading}
+          disabled={!message?.trim() || isLoading}
           isLoading={isLoading}
           size="sm"
           className="px-4 py-2"

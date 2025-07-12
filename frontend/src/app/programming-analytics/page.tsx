@@ -1,25 +1,21 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import ProgrammingAnalytics from "@/components/ProgrammingAnalytics";
+import { useAuth } from "@/contexts/AuthContext";
 
 export default function ProgrammingAnalyticsPage() {
   const router = useRouter();
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const { isAuthenticated, isLoading } = useAuth();
 
   useEffect(() => {
-    const token = localStorage.getItem("token");
-    if (!token) {
-      router.push("/login");
-      return;
+    if (!isLoading && !isAuthenticated) {
+      router.push("/auth");
     }
-    setIsAuthenticated(true);
-    setLoading(false);
-  }, [router]);
+  }, [isAuthenticated, isLoading, router]);
 
-  if (loading) {
+  if (isLoading) {
     return (
       <div className="flex items-center justify-center min-h-screen">
         <div className="text-lg">Loading...</div>
