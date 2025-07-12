@@ -409,7 +409,7 @@ class AdvancedQueryParser:
         
         return False
     
-    def extract_temporal_range(self, query: str) -> TemporalRange:
+    def extract_temporal_range(self, query: str) -> Optional[TemporalRange]:
         """Extract temporal range from query (public interface)"""
         return self._extract_temporal_range(query.lower())
     

@@ -208,7 +208,7 @@ class UserProfileManager:
                 growth_patterns=growth_patterns
             )
     
-    def create_user_profile(self, user_id: str, initial_preferences: Optional[Dict] = None) -> UserProfile:
+    def create_user_profile(self, user_id: str, initial_preferences: Optional[Dict] = None) -> Optional[UserProfile]:
         """
         Create a new user profile
         
@@ -470,7 +470,7 @@ class UserProfileManager:
             ])
         
         # Low rating recommendations
-        if stats['average_rating'] and stats['average_rating'] < 3.0:
+        if stats['average_rating'] is not None and stats['average_rating'] < 3.0:
             recommendations.extend([
                 "Try being more specific in your questions",
                 "Ask about recent conversations for more relevant insights",
@@ -613,7 +613,7 @@ class UserProfileManager:
         
         return {
             'user_id': user_id,
-            'profile': asdict(profile),
+            'profile': asdict(profile) if profile else {},
             'statistics': self.get_user_statistics(user_id),
             'recommendations': self.get_recommendations(user_id),
             'exported_at': datetime.now().isoformat()
@@ -660,9 +660,12 @@ def main():
         'learning_goals': ['self_awareness', 'emotional_intelligence']
     })
     
-    print(f"Created profile for user: {profile.user_id}")
-    print(f"Focus areas: {profile.focus_areas}")
-    print(f"Learning goals: {profile.learning_goals}")
+    if profile is not None:
+        print(f"Created profile for user: {profile.user_id}")
+        print(f"Focus areas: {profile.focus_areas}")
+        print(f"Learning goals: {profile.learning_goals}")
+    else:
+        print("Failed to create user profile")
     
     # Record interaction
     manager.record_interaction(user_id, "What have I learned about relationships?", 

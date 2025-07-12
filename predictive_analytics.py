@@ -401,7 +401,7 @@ class PredictiveAnalytics:
                 key_periods.append({
                     'type': 'peak',
                     'date': time_series.index[i],
-                    'score': growth_scores[i],
+                    'score': float(growth_scores[i]),
                     'description': 'High growth period'
                 })
         
@@ -418,9 +418,10 @@ class PredictiveAnalytics:
         # Group by month and calculate average scores
         monthly_scores = defaultdict(list)
         for date, row in time_series.iterrows():
-            month = date.month
-            score = sum(row[col] * weight for col, weight in self.growth_indicators.items())
-            monthly_scores[month].append(score)
+            if hasattr(date, 'month') and isinstance(date, (pd.Timestamp, datetime)):
+                month = date.month
+                score = sum(float(row[col]) * weight for col, weight in self.growth_indicators.items())
+                monthly_scores[month].append(score)
         
         # Find months with consistently high/low scores
         for month, scores in monthly_scores.items():
@@ -681,7 +682,7 @@ class PredictiveAnalytics:
         ]
         
         # Calculate impact score
-        impact_score = min(likelihood * 1.2, 1.0)
+        impact_score = min(float(likelihood) * 1.2, 1.0)
         
         # Generate preparation actions
         preparation_actions = [
@@ -692,7 +693,7 @@ class PredictiveAnalytics:
         
         return PredictedBreakthrough(
             topic=topic,
-            likelihood=likelihood,
+            likelihood=float(likelihood),
             estimated_timing=estimated_timing,
             trigger_factors=trigger_factors,
             impact_score=impact_score,

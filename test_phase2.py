@@ -81,6 +81,7 @@ class TestLLMIntegration(unittest.TestCase):
     
     def test_cache_key_generation(self):
         """Test cache key generation"""
+        # type: ignore - Mock objects used for testing
         cache_key = self.llm._generate_cache_key("test query", self.sample_conversations, self.sample_analytics)
         self.assertIsInstance(cache_key, str)
         self.assertEqual(len(cache_key), 32)  # MD5 hash length
@@ -120,6 +121,7 @@ class TestLLMIntegration(unittest.TestCase):
     
     def test_fallback_to_template(self):
         """Test fallback to template system"""
+        # type: ignore - Mock objects used for testing
         insight = self.llm._fallback_to_template("test query", self.sample_conversations, self.sample_analytics)
         
         self.assertIsInstance(insight, GeneratedInsight)
@@ -186,7 +188,8 @@ class TestAdvancedQueryParser(unittest.TestCase):
         
         self.assertIsInstance(intent, ComplexQueryIntent)
         self.assertIsNotNone(intent.temporal_range)
-        self.assertEqual(intent.temporal_range.relative_period, "last_year")
+        if intent.temporal_range is not None:
+            self.assertEqual(intent.temporal_range.relative_period, "last_year")
     
     def test_extract_temporal_range(self):
         """Test temporal range extraction"""
@@ -195,16 +198,18 @@ class TestAdvancedQueryParser(unittest.TestCase):
         temporal_range = self.parser.extract_temporal_range(query)
         
         self.assertIsInstance(temporal_range, TemporalRange)
-        self.assertEqual(temporal_range.relative_period, "past_3_months")
-        self.assertIsNotNone(temporal_range.start_date)
-        self.assertIsNotNone(temporal_range.end_date)
+        if temporal_range is not None:
+            self.assertEqual(temporal_range.relative_period, "past_3_months")
+            self.assertIsNotNone(temporal_range.start_date)
+            self.assertIsNotNone(temporal_range.end_date)
         
         # Test specific dates
         query = "My conversations from January 2024 to March 2024"
         temporal_range = self.parser.extract_temporal_range(query)
         
         self.assertIsInstance(temporal_range, TemporalRange)
-        self.assertGreater(len(temporal_range.specific_dates), 0)
+        if temporal_range is not None:
+            self.assertGreater(len(temporal_range.specific_dates), 0)
     
     def test_detect_comparative_elements(self):
         """Test comparative elements detection"""
@@ -412,12 +417,13 @@ class TestUserProfileManager(unittest.TestCase):
         profile = self.profile_manager.create_user_profile(user_id, initial_preferences)
         
         self.assertIsInstance(profile, UserProfile)
-        self.assertEqual(profile.user_id, user_id)
-        self.assertIn('relationships', profile.focus_areas)
-        self.assertIn('productivity', profile.focus_areas)
-        self.assertIn('self_awareness', profile.learning_goals)
-        self.assertIsInstance(profile.created_at, datetime)
-        self.assertIsInstance(profile.last_updated, datetime)
+        if profile is not None:
+            self.assertEqual(profile.user_id, user_id)
+            self.assertIn('relationships', profile.focus_areas)
+            self.assertIn('productivity', profile.focus_areas)
+            self.assertIn('self_awareness', profile.learning_goals)
+            self.assertIsInstance(profile.created_at, datetime)
+            self.assertIsInstance(profile.last_updated, datetime)
     
     def test_get_user_profile(self):
         """Test user profile retrieval"""

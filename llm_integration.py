@@ -47,12 +47,13 @@ class QueryContext:
     query: str
     user_id: Optional[str] = None
     conversation_count: int = 0
-    date_range: Tuple[datetime, datetime] = None
-    top_themes: List[Tuple[str, int]] = None
-    sentiment_trends: Dict[str, Any] = None
-    growth_metrics: Dict[str, float] = None
-    breakthrough_moments: List[Dict[str, Any]] = None
-    user_preferences: Dict[str, Any] = None
+    date_range: Optional[Tuple[datetime, datetime]] = None
+    top_themes: Optional[List[Tuple[str, int]]] = None
+    sentiment_trends: Optional[Dict[str, Any]] = None
+    growth_metrics: Optional[Dict[str, float]] = None
+    breakthrough_moments: Optional[List[Dict[str, Any]]] = None
+    user_preferences: Optional[Dict[str, Any]] = None
+    conversations: Optional[List[Any]] = None
 
 
 class LLMIntegration:
@@ -132,7 +133,7 @@ class LLMIntegration:
             response = self._make_api_call(system_prompt, user_prompt)
             
             # Parse and validate response
-            parsed_response = self._parse_response(response, query)
+            parsed_response = self._parse_response(response, query, conversations)
             
             # Cache response
             self._cache_response(cache_key, parsed_response)
@@ -155,7 +156,8 @@ class LLMIntegration:
             sentiment_trends=analytics_data.sentiment_trends if analytics_data else {},
             growth_metrics=analytics_data.growth_metrics if analytics_data else {},
             breakthrough_moments=analytics_data.breakthrough_moments if analytics_data else [],
-            user_preferences=user_profile or {}
+            user_preferences=user_profile or {},
+            conversations=conversations # Pass conversations to context
         )
     
     def _create_system_prompt(self) -> str:
@@ -214,9 +216,10 @@ IMPORTANT:
         
         # Prepare conversation summaries
         conversation_summaries = []
-        for i, conv in enumerate(context.conversations[:10]):  # Limit to 10 most relevant
-            summary = f"Conversation {i+1} ({conv.create_date.strftime('%Y-%m-%d')}): {conv.title[:100]}..."
-            conversation_summaries.append(summary)
+        if context.conversations:
+            for i, conv in enumerate(context.conversations[:10]):  # Limit to 10 most relevant
+                summary = f"Conversation {i+1} ({conv.create_date.strftime('%Y-%m-%d')}): {conv.title[:100]}..."
+                conversation_summaries.append(summary)
         
         # Prepare analytics summary
         analytics_summary = ""
@@ -236,19 +239,24 @@ IMPORTANT:
             if 'learning_goals' in context.user_preferences:
                 preferences_summary += f"Learning goals: {', '.join(context.user_preferences['learning_goals'])}. "
         
+        # Prepare date range string
+        date_range_str = "Not specified"
+        if context.date_range:
+            date_range_str = f"{context.date_range[0].strftime('%Y-%m-%d')} to {context.date_range[1].strftime('%Y-%m-%d')}"
+        
         prompt = f"""USER QUERY: {context.query}
 
 CONTEXT:
 - Total conversations analyzed: {context.conversation_count}
-- Date range: {context.date_range[0].strftime('%Y-%m-%d')} to {context.date_range[1].strftime('%Y-%m-%d')} if context.date_range else 'Not specified'
+- Date range: {date_range_str}
 - {analytics_summary}
 - {preferences_summary}
 
 TOP THEMES IDENTIFIED:
-{chr(10).join([f"• {theme}: {count} occurrences" for theme, count in context.top_themes[:5]]) if context.top_themes else "No themes identified"}
+{chr(10).join([f"• {theme}: {count} occurrences" for theme, count in (context.top_themes or [])[:5]])}
 
 BREAKTHROUGH MOMENTS DETECTED:
-{chr(10).join([f"• {moment['title']}: {moment['summary'][:100]}..." for moment in context.breakthrough_moments[:3]]) if context.breakthrough_moments else "No breakthrough moments detected"}
+{chr(10).join([f"• {moment['title']}: {moment['summary'][:100]}..." for moment in (context.breakthrough_moments or [])[:3]])}
 
 CONVERSATION SUMMARIES:
 {chr(10).join(conversation_summaries)}
@@ -281,16 +289,23 @@ Please analyze this data and provide insights in the exact format specified in t
             
             # Update tracking
             self.request_count += 1
-            self.total_tokens += response.usage.total_tokens
-            self.last_request_time = time.time()
+            if response.usage:
+                self.total_tokens += response.usage.total_tokens
+                self.last_request_time = time.time()
+                
+                # Calculate cost
+                cost = self._calculate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
+                self.total_cost += cost
+                
+                self.logger.info(f"API call successful. Tokens: {response.usage.total_tokens}, Cost: ${cost:.4f}")
+            else:
+                self.last_request_time = time.time()
+                self.logger.info("API call successful but no usage data available.")
             
-            # Calculate cost
-            cost = self._calculate_cost(response.usage.prompt_tokens, response.usage.completion_tokens)
-            self.total_cost += cost
-            
-            self.logger.info(f"API call successful. Tokens: {response.usage.total_tokens}, Cost: ${cost:.4f}")
-            
-            return response.choices[0].message.content
+            content = response.choices[0].message.content
+            if content is None:
+                return "Analysis completed successfully."
+            return content
             
         except openai.RateLimitError:
             self.logger.warning("Rate limit hit, waiting 60 seconds...")
@@ -305,7 +320,7 @@ Please analyze this data and provide insights in the exact format specified in t
             self.logger.error(f"Unexpected error in API call: {e}")
             raise
     
-    def _parse_response(self, response: str, query: str) -> GeneratedInsight:
+    def _parse_response(self, response: str, query: str, conversations: Optional[List[Conversation]] = None) -> GeneratedInsight:
         """Parse and validate LLM response"""
         
         # Extract sections using regex
@@ -360,6 +375,9 @@ Please analyze this data and provide insights in the exact format specified in t
         personalization_match = re.search(r'Personalization: (High|Medium|Low)', response)
         personalization_level = personalization_match.group(1) if personalization_match else "Medium"
         
+        # Handle conversations parameter
+        conv_list = conversations if conversations is not None else []
+        
         return GeneratedInsight(
             summary=summary,
             key_learnings=key_learnings,
@@ -369,7 +387,7 @@ Please analyze this data and provide insights in the exact format specified in t
             predictive_insights=predictive_insights,
             confidence_score=confidence_score,
             personalization_level=personalization_level,
-            source_conversations=[f"Conversation {i+1}" for i in range(min(5, len(conversations)))],
+            source_conversations=[f"Conversation {i+1}" for i in range(min(5, len(conv_list)))],
             generated_at=datetime.now(),
             query=query,
             model_used=self.model

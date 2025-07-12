@@ -346,7 +346,7 @@ class BackgroundProcessor:
         self.task_queue.put((task_id, func, args, kwargs))
         return task_id
     
-    def get_task_result(self, task_id: str, timeout: float = None) -> Optional[Any]:
+    def get_task_result(self, task_id: str, timeout: Optional[float] = None) -> Optional[Any]:
         """
         Get result of completed task
         
@@ -360,11 +360,14 @@ class BackgroundProcessor:
         start_time = time.time()
         
         while not self.completed_tasks.get(task_id, False):
-            if timeout and (time.time() - start_time) > timeout:
+            if timeout is not None and (time.time() - start_time) > timeout:
                 return None
             time.sleep(0.1)
         
-        return self.task_results.get(task_id)
+        result = self.task_results.get(task_id)
+        if result is None:
+            return None
+        return result
     
     def _worker_loop(self):
         """Background worker loop"""
