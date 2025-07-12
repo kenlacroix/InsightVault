@@ -1,0 +1,29 @@
+# Cursor Rules for InsightVault Project
+
+## Environment Configuration
+- This is a Windows development environment
+- Use PowerShell syntax, not bash syntax
+- Use `;` for command chaining instead of `&&`
+- Use `dir` instead of `ls` for listing files
+- Use Windows path separators (`\`)
+
+## Command Examples
+- ✅ `cd backend; python -m uvicorn app.main:app --reload`
+- ❌ `cd backend && python -m uvicorn app.main:app --reload`
+
+## Project Structure
+- Backend: Python/FastAPI in `backend/` directory
+- Frontend: Next.js in `frontend/` directory
+- Database: SQLite with Alembic migrations
+
+## Development Commands
+- Backend server: `cd backend; python -m uvicorn app.main:app --reload`
+- Frontend dev: `cd frontend; npm run dev`
+- Database migration: `cd backend; python -m alembic upgrade head`
+- Install backend deps: `cd backend; pip install -r requirements.txt`
+- Install frontend deps: `cd frontend; npm install`
+
+## File Paths
+- Use Windows-style paths: `C:\Users\conta\source\repos\InsightVault`
+- Use backslashes for Windows paths
+- Current working directory: `C:\Users\conta\source\repos\InsightVault` 
