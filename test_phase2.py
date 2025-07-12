@@ -563,8 +563,23 @@ class TestPerformanceOptimizer(unittest.TestCase):
     
     def tearDown(self):
         """Clean up test environment"""
-        self.optimizer.shutdown()
-        os.unlink(self.temp_db.name)
+        try:
+            self.optimizer.shutdown()
+            # Force close any remaining database connections
+            import gc
+            gc.collect()
+            # Wait a moment for connections to close
+            import time
+            time.sleep(0.1)
+        except Exception:
+            pass
+        
+        try:
+            if hasattr(self, 'temp_db') and os.path.exists(self.temp_db.name):
+                os.unlink(self.temp_db.name)
+        except PermissionError:
+            # File might still be locked, that's okay for tests
+            pass
     
     def test_response_cache(self):
         """Test response caching functionality"""

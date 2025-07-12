@@ -241,7 +241,7 @@ class DatabaseManager:
         except queue.Full:
             conn.close()
     
-    def execute_query(self, query: str, params: tuple = ()) -> List[tuple]:
+    def execute_query(self, query: str, params: tuple = ()) -> List[Dict[str, Any]]:
         """
         Execute optimized database query
         
@@ -250,7 +250,7 @@ class DatabaseManager:
             params: Query parameters
             
         Returns:
-            Query results
+            Query results as list of dictionaries
         """
         start_time = time.time()
         
@@ -264,11 +264,22 @@ class DatabaseManager:
         try:
             cursor = conn.cursor()
             cursor.execute(query, params)
+            
+            # Get column names
+            columns = [description[0] for description in cursor.description] if cursor.description else []
             results = cursor.fetchall()
+            
+            # Convert to list of dictionaries
+            dict_results = []
+            for row in results:
+                if columns:
+                    dict_results.append(dict(zip(columns, row)))
+                else:
+                    dict_results.append({'result': row[0] if row else None})
             
             # Cache results for simple queries
             if len(results) <= 100 and 'SELECT' in query.upper():
-                self.query_cache[query_hash] = results
+                self.query_cache[query_hash] = dict_results
             
             query_time = (time.time() - start_time) * 1000
             self.stats['query_count'] += 1
@@ -277,7 +288,7 @@ class DatabaseManager:
                 self.stats['slow_queries'] += 1
                 logging.warning(f"Slow query ({query_time:.2f}ms): {query}")
             
-            return results
+            return dict_results
         finally:
             self.return_connection(conn)
     
