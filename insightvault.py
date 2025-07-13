@@ -161,17 +161,136 @@ class InsightVaultLauncher:
         except:
             return False
 
-    def cleanup_ports(self):
+    def cleanup_ports(self, interactive: bool = True):
         """Clean up ports that might be in use."""
-        self.log("Cleaning up ports...", "INFO", "SYSTEM")
+        self.log("Checking for ports in use...", "INFO", "SYSTEM")
         
+        ports_to_clean = []
         for port in [8000, 3000]:
             if self.check_port_in_use(port):
-                self.log(f"Port {port} is in use, attempting to free it...", "INFO", "SYSTEM")
-                if self.kill_process_on_port(port):
-                    self.log(f"Port {port} freed successfully", "SUCCESS", "SYSTEM")
-                else:
-                    self.log(f"Could not free port {port}", "WARNING", "SYSTEM")
+                ports_to_clean.append(port)
+                self.log(f"Port {port} is in use", "WARNING", "SYSTEM")
+        
+        if not ports_to_clean:
+            self.log("All required ports are available", "SUCCESS", "SYSTEM")
+            return True
+        
+        if interactive:
+            return self.cleanup_ports_interactive(ports_to_clean)
+        else:
+            return self.cleanup_ports_automatic(ports_to_clean)
+    
+    def cleanup_ports_interactive(self, ports: List[int]) -> bool:
+        """Clean up ports with user permission."""
+        print(f"\n[SYSTEM] Found {len(ports)} port(s) in use: {', '.join(map(str, ports))}")
+        print("This might be another instance of InsightVault or another application.")
+        
+        while True:
+            response = input("\nDo you want to kill the processes using these ports? (y/n/a for all): ").lower().strip()
+            
+            if response in ['y', 'yes']:
+                # Kill one port at a time
+                for port in ports:
+                    if self.kill_process_on_port_with_prompt(port):
+                        self.log(f"Port {port} freed successfully", "SUCCESS", "SYSTEM")
+                    else:
+                        self.log(f"Could not free port {port}", "WARNING", "SYSTEM")
+                return True
+            elif response in ['a', 'all']:
+                # Kill all ports without further prompts
+                success = True
+                for port in ports:
+                    if self.kill_process_on_port(port):
+                        self.log(f"Port {port} freed successfully", "SUCCESS", "SYSTEM")
+                    else:
+                        self.log(f"Could not free port {port}", "WARNING", "SYSTEM")
+                        success = False
+                return success
+            elif response in ['n', 'no']:
+                self.log("Port cleanup cancelled by user", "INFO", "SYSTEM")
+                return False
+            else:
+                print("Please enter 'y' (yes), 'n' (no), or 'a' (all)")
+    
+    def cleanup_ports_automatic(self, ports: List[int]) -> bool:
+        """Clean up ports automatically without prompts."""
+        self.log("Automatically cleaning up ports...", "INFO", "SYSTEM")
+        
+        success = True
+        for port in ports:
+            if self.kill_process_on_port(port):
+                self.log(f"Port {port} freed successfully", "SUCCESS", "SYSTEM")
+            else:
+                self.log(f"Could not free port {port}", "WARNING", "SYSTEM")
+                success = False
+        
+        return success
+    
+    def kill_process_on_port_with_prompt(self, port: int) -> bool:
+        """Kill process on port with individual prompt."""
+        try:
+            # Find process using the port
+            result = subprocess.run(
+                f'netstat -ano | findstr :{port}',
+                shell=True,
+                capture_output=True,
+                text=True
+            )
+            
+            if result.returncode == 0:
+                lines = result.stdout.strip().split('\n')
+                for line in lines:
+                    if f':{port}' in line and 'LISTENING' in line:
+                        # Extract PID
+                        parts = line.split()
+                        if len(parts) >= 5:
+                            pid = parts[-1]
+                            
+                            # Get process name for better identification
+                            try:
+                                tasklist_result = subprocess.run(
+                                    f'tasklist /FI "PID eq {pid}" /FO CSV',
+                                    shell=True,
+                                    capture_output=True,
+                                    text=True
+                                )
+                                process_name = "Unknown"
+                                if tasklist_result.returncode == 0:
+                                    lines = tasklist_result.stdout.strip().split('\n')
+                                    if len(lines) > 1:  # Skip header
+                                        process_info = lines[1].split(',')
+                                        if len(process_info) > 0:
+                                            process_name = process_info[0].strip('"')
+                            except:
+                                process_name = "Unknown"
+                            
+                            print(f"\n[SYSTEM] Found process: {process_name} (PID: {pid}) using port {port}")
+                            response = input(f"Kill this process? (y/n): ").lower().strip()
+                            
+                            if response in ['y', 'yes']:
+                                kill_result = subprocess.run(
+                                    f'taskkill /PID {pid} /F',
+                                    shell=True,
+                                    capture_output=True,
+                                    text=True
+                                )
+                                
+                                if kill_result.returncode == 0:
+                                    self.log(f"Killed process {process_name} (PID: {pid}) on port {port}", "SUCCESS", "SYSTEM")
+                                    time.sleep(2)  # Wait for port to be released
+                                    return True
+                                else:
+                                    self.log(f"Failed to kill process {pid}: {kill_result.stderr}", "ERROR", "SYSTEM")
+                                    return False
+                            else:
+                                self.log(f"Skipped killing process {pid} on port {port}", "INFO", "SYSTEM")
+                                return False
+            
+            return True
+            
+        except Exception as e:
+            self.log(f"Error killing process on port {port}: {e}", "ERROR", "SYSTEM")
+            return False
 
     def kill_process_on_port(self, port: int) -> bool:
         """Kill process using a specific port (Windows only)."""
@@ -520,6 +639,23 @@ class InsightVaultLauncher:
         self.log("Starting backend server...", "INFO", "BACKEND")
         
         try:
+            # Initialize database if needed
+            self.log("Checking database initialization...", "INFO", "BACKEND")
+            try:
+                if self.is_windows:
+                    init_cmd = f"{sys.executable} init_db.py"
+                    result = subprocess.run(init_cmd, cwd="backend", shell=True, capture_output=True, text=True, timeout=30)
+                else:
+                    init_cmd = ["python3", "init_db.py"]
+                    result = subprocess.run(init_cmd, cwd="backend", capture_output=True, text=True, timeout=30)
+                
+                if result.returncode == 0:
+                    self.log("Database initialized successfully", "SUCCESS", "BACKEND")
+                else:
+                    self.log(f"Database initialization warning: {result.stderr}", "WARNING", "BACKEND")
+            except Exception as e:
+                self.log(f"Database initialization check failed: {e}", "WARNING", "BACKEND")
+            
             if self.is_windows:
                 cmd = f"{sys.executable} -m uvicorn app.main:app --host 127.0.0.1 --port 8000"
                 self.backend_process = subprocess.Popen(
@@ -630,13 +766,18 @@ class InsightVaultLauncher:
         except:
             return False
 
-    def start_services(self, auto_install: bool = False, minimal: bool = False) -> bool:
+    def start_services(self, auto_install: bool = False, minimal: bool = False, interactive_cleanup: bool = True) -> bool:
         """Start both services with optional dependency installation."""
         self.log("🚀 Starting InsightVault services...", "INFO", "SYSTEM")
         
         # Check requirements
         if not self.check_requirements():
             self.log("Requirements check failed", "ERROR", "SYSTEM")
+            return False
+        
+        # Clean up ports if needed (with user permission)
+        if not self.cleanup_ports(interactive=interactive_cleanup):
+            self.log("Port cleanup was cancelled or failed", "ERROR", "SYSTEM")
             return False
         
         # Install dependencies if requested
@@ -753,6 +894,7 @@ OPTIONS:
     --auto-install  Automatically install dependencies before starting
     --minimal       Use minimal requirements (avoid Rust compilation)
     --no-monitor    Don't monitor services (exit after starting)
+    --no-interactive Disable interactive prompts (auto-kill processes)
     --save-report   Save diagnostic report to file
     --verbose       Enable verbose logging
 
@@ -765,6 +907,9 @@ EXAMPLES:
 
     # Start with minimal dependencies (avoid Rust issues)
     python insightvault.py start --auto-install --minimal
+
+    # Start without interactive prompts (auto-kill processes)
+    python insightvault.py start --no-interactive
 
     # Run diagnostics only
     python insightvault.py diagnose
@@ -815,6 +960,8 @@ def main():
                        help='Save diagnostic report to file')
     parser.add_argument('--verbose', action='store_true',
                        help='Enable verbose logging')
+    parser.add_argument('--no-interactive', action='store_true',
+                       help='Disable interactive prompts (auto-kill processes)')
     parser.add_argument('-h', '--help', action='store_true',
                        help='Show help message')
     
@@ -830,14 +977,22 @@ def main():
     
     # Execute command
     if args.command == 'start':
-        success = launcher.start_services(auto_install=args.auto_install, minimal=args.minimal)
+        success = launcher.start_services(
+            auto_install=args.auto_install, 
+            minimal=args.minimal,
+            interactive_cleanup=not args.no_interactive
+        )
         if success and not args.no_monitor:
             launcher.run_interactive()
         elif not success:
             sys.exit(1)
     
     elif args.command == 'quick':
-        success = launcher.start_services(auto_install=False, minimal=False)
+        success = launcher.start_services(
+            auto_install=False, 
+            minimal=False,
+            interactive_cleanup=not args.no_interactive
+        )
         if success and not args.no_monitor:
             launcher.run_interactive()
         elif not success:

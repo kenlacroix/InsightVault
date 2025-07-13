@@ -477,10 +477,10 @@ def generate_ai_response_with_gpt(user_message: str, conversations: List[Convers
         cached_response = get_cached_response(cache_key)
         
         if cached_response:
-            print(f"✅ Cache hit for: {user_message[:50]}...")
+            print(f"[CACHE] Cache hit for: {user_message[:50]}...")
             return cached_response
         
-        print(f"🔄 Cache miss, calling API for: {user_message[:50]}...")
+        print(f"[CACHE] Cache miss, calling API for: {user_message[:50]}...")
         
         # Prepare context from conversations
         context_data = prepare_conversation_context(conversations, focus_conversation)
@@ -541,7 +541,7 @@ Please provide a comprehensive, insightful response that addresses the user's qu
         
         # Add follow-up prompts to the response
         if follow_up_prompts:
-            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            ai_response += "\n\n[INSIGHT] **Follow-up Questions You Might Find Interesting:**\n"
             for i, prompt in enumerate(follow_up_prompts, 1):
                 ai_response += f"{i}. {prompt}\n"
         
@@ -872,11 +872,11 @@ def generate_ai_response_fallback(user_message: str, conversations: List[Convers
                 
                 # Add learning insights
                 if dominant_difficulty == 'beginner':
-                    response += "\n\n📚 Learning Pattern: You seem to be focusing on foundational concepts and getting started with programming."
+                    response += "\n\n[LEARNING] Learning Pattern: You seem to be focusing on foundational concepts and getting started with programming."
                 elif dominant_difficulty == 'advanced':
-                    response += "\n\n🚀 Advanced Topics: You're diving deep into complex programming concepts and advanced techniques."
+                    response += "\n\n[ADVANCED] Advanced Topics: You're diving deep into complex programming concepts and advanced techniques."
                 else:
-                    response += "\n\n⚖️ Balanced Approach: You're covering a mix of beginner and advanced programming topics."
+                    response += "\n\n[BALANCED] Balanced Approach: You're covering a mix of beginner and advanced programming topics."
                 
                 return response
             else:
@@ -1074,7 +1074,10 @@ async def send_message_stream(
             yield f"data: {json.dumps({'stage': 'formatting', 'status': 'Adding insights and follow-up questions...', 'icon': '💡'})}\n\n"
             await asyncio.sleep(0.8)
             
-            # Generate the actual response
+            # Yield a status before calling OpenAI (blocking call)
+            yield f"data: {json.dumps({'stage': 'openai_wait', 'status': 'Waiting for OpenAI API response...', 'icon': '🤖'})}\n\n"
+            
+            # Generate the actual response (blocking)
             ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
             
             # Store the interaction
@@ -1198,7 +1201,7 @@ Please provide a comprehensive, insightful response that addresses the user's qu
         
         # Add follow-up prompts to the response
         if follow_up_prompts:
-            ai_response += "\n\n💡 **Follow-up Questions You Might Find Interesting:**\n"
+            ai_response += "\n\n[INSIGHT] **Follow-up Questions You Might Find Interesting:**\n"
             for i, prompt in enumerate(follow_up_prompts, 1):
                 ai_response += f"{i}. {prompt}\n"
         

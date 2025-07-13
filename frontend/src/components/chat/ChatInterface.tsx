@@ -136,7 +136,22 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
               const data = JSON.parse(line.slice(6));
 
               if (data.error) {
-                throw new Error(data.error);
+                // Show the error as an assistant message in the chat
+                const errorMessage: Message = {
+                  id: (Date.now() + 2).toString(),
+                  role: "assistant",
+                  content: data.error,
+                  timestamp: new Date().toISOString(),
+                };
+                setMessages((prev) => {
+                  const filtered = prev.filter(
+                    (msg) => msg.id !== loadingMessage.id
+                  );
+                  return [...filtered, errorMessage];
+                });
+                setIsLoading(false);
+                setCurrentStage(undefined);
+                return; // Stop processing further
               }
 
               if (data.stage) {
@@ -189,8 +204,11 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
         return [...filtered, errorMessage];
       });
     } finally {
-      setIsLoading(false);
-      setCurrentStage(undefined);
+      // Wait 500ms before hiding the status indicator so users can see the 'complete' stage
+      setTimeout(() => {
+        setIsLoading(false);
+        setCurrentStage(undefined);
+      }, 500);
     }
   };
 
