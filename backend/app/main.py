@@ -7,6 +7,9 @@ from .auth import router as auth_router
 from .api.files import router as files_router
 from .api.chat import router as chat_router
 from .api.settings import router as settings_router
+from .api.sessions import router as sessions_router
+from .api.context import router as context_router
+from .api.advanced_context import router as advanced_context_router
 from .database import init_db
 
 app = FastAPI(
@@ -31,6 +34,9 @@ app.include_router(auth_router)
 app.include_router(files_router)
 app.include_router(chat_router)
 app.include_router(settings_router)
+app.include_router(sessions_router)
+app.include_router(context_router)
+app.include_router(advanced_context_router)
 
 @app.on_event("startup")
 async def startup_event():

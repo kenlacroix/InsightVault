@@ -179,6 +179,26 @@ InsightVault/
 - Node.js 16+
 - Git
 
+### Environment Notes
+
+**Windows Development Environment:**
+
+- This project is configured for Windows/PowerShell
+- Use `;` for command chaining instead of `&&`
+- Use `dir` instead of `ls` for listing files
+- Use Windows path separators (`\`)
+
+**Example Commands:**
+
+```powershell
+# ✅ Correct (PowerShell)
+cd backend; python -m uvicorn app.main:app --reload
+cd frontend; npm run dev
+
+# ❌ Incorrect (Bash)
+cd backend && python -m uvicorn app.main:app --reload
+```
+
 ### Development Setup
 
 ```bash
