@@ -9,6 +9,7 @@ import os
 import asyncio
 from ..database import get_sync_db
 from ..models import User, Conversation, UserSession, UserInteraction
+from ..context_fusion import ContextFusionEngine
 from ..auth import get_current_user
 import openai
 from ..config import Config
@@ -967,6 +968,17 @@ async def send_message(
     # Get or create session for storing interactions
     session = get_or_create_session(db, current_user.id)
     
+    # Create context fusion engine
+    context_engine = ContextFusionEngine(db)
+    
+    # Generate holistic prompt with context fusion
+    context_data = context_engine.create_holistic_prompt(
+        user_id=current_user.id,
+        current_question=request.message,
+        include_historical=True,
+        include_recent=True
+    )
+    
     # Generate AI response with status updates
     try:
         ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
@@ -1035,6 +1047,9 @@ async def send_message_stream(
                     yield f"data: {json.dumps({'error': 'Conversation not found'})}\n\n"
                     return
             
+            # Get or create session for storing interactions
+            session = get_or_create_session(db, current_user.id)
+            
             # Stage 1: Checking cache
             yield f"data: {json.dumps({'stage': 'cache_check', 'status': 'Checking for cached response...', 'icon': '🔍'})}\n\n"
             await asyncio.sleep(0.5)
@@ -1061,6 +1076,32 @@ async def send_message_stream(
             
             # Generate the actual response
             ai_response = generate_ai_response_with_status(request.message, conversations, focus_conversation)
+            
+            # Store the interaction
+            context_used = []
+            if focus_conversation:
+                context_used.append(f"conversation_{focus_conversation.id}")
+            
+            metadata = {
+                "topics": ai_response.get('topics', []),
+                "sentiment": ai_response.get('sentiment', 'neutral'),
+                "word_count": len(request.message.split())
+            }
+            
+            print(f"🔍 Chat API: Storing interaction for session {session.id}")
+            print(f"🔍 Chat API: User question: {request.message[:50]}...")
+            print(f"🔍 Chat API: AI response length: {len(ai_response['message'])}")
+            
+            store_interaction(
+                db=db,
+                session_id=session.id,
+                user_question=request.message,
+                ai_response=ai_response['message'],
+                context_used=context_used,
+                metadata=metadata
+            )
+            
+            print(f"🔍 Chat API: Interaction stored successfully")
             
             # Final response
             yield f"data: {json.dumps({'stage': 'complete', 'status': 'Response ready!', 'message': ai_response['message'], 'icon': '✅'})}\n\n"

@@ -30,11 +30,13 @@ const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 interface RecentInteractionsProps {
   className?: string;
   onInteractionClick?: (question: string) => void;
+  refreshTrigger?: number; // Add this to trigger refreshes
 }
 
 export function RecentInteractions({
   className = "",
   onInteractionClick,
+  refreshTrigger = 0,
 }: RecentInteractionsProps) {
   const { token } = useAuth();
   const [recentData, setRecentData] = useState<RecentInteractionsData[]>([]);
@@ -42,22 +44,39 @@ export function RecentInteractions({
   const [isExpanded, setIsExpanded] = useState(false);
 
   const fetchRecentInteractions = async () => {
-    if (!token) return;
+    if (!token) {
+      console.log("🔍 RecentInteractions: No token available");
+      return;
+    }
 
+    console.log("🔍 RecentInteractions: Fetching recent interactions...");
     setIsLoading(true);
     try {
-      const response = await fetch(`${API_BASE_URL}/sessions/recent?limit=5`, {
+      const response = await fetch(`/api/sessions/recent?limit=5`, {
         headers: {
           Authorization: `Bearer ${token}`,
         },
       });
 
+      console.log("🔍 RecentInteractions: Response status:", response.status);
+
       if (response.ok) {
         const data = await response.json();
+        console.log("🔍 RecentInteractions: Data received:", data);
         setRecentData(data);
+      } else {
+        const errorText = await response.text();
+        console.error(
+          "❌ RecentInteractions: Response not OK:",
+          response.status,
+          errorText
+        );
       }
     } catch (error) {
-      console.error("Error fetching recent interactions:", error);
+      console.error(
+        "❌ RecentInteractions: Error fetching recent interactions:",
+        error
+      );
     } finally {
       setIsLoading(false);
     }
@@ -65,7 +84,7 @@ export function RecentInteractions({
 
   useEffect(() => {
     fetchRecentInteractions();
-  }, [token]);
+  }, [token, refreshTrigger]);
 
   const formatTime = (timestamp: string) => {
     const date = new Date(timestamp);

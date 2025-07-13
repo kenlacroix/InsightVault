@@ -61,26 +61,58 @@ This document provides a detailed plan and technical context for implementing a 
 
 ---
 
-### Phase 3: Growth Tracking & Pattern Recognition
+### Phase 3: Advanced Context Intelligence & Growth Tracking
 
 **Goal:**
 
-- Track user growth, recurring themes, and breakthroughs over time.
-- Visualize progress and patterns across both historical and ongoing data.
+- Implement sophisticated context selection and topic detection that recognizes nuanced themes across different use cases (therapy, data analysis, personal growth, etc.).
+- Track user growth, recurring themes, and breakthroughs over time with advanced pattern recognition.
+- Provide dynamic, intelligent context that adapts to user needs and conversation patterns.
 
 **Technical Steps:**
 
 1. **Database Schema:**
-   - Add a `growth_insights` table for storing detected patterns, milestones, and insights.
-2. **Backend Logic:**
-   - Implement pattern recognition algorithms (e.g., tag frequency, sentiment trends).
-   - Store and retrieve growth insights for each user.
-3. **Frontend:**
-   - Create a timeline or dashboard to visualize growth and recurring themes.
+
+   - Add `growth_insights` table for storing detected patterns, milestones, and insights.
+   - Add `conversation_clusters` table for grouping related conversations.
+   - Add `topic_embeddings` table for storing semantic topic representations.
+   - Add `use_case_profiles` table for storing user-specific context preferences.
+
+2. **Advanced Topic Detection:**
+
+   - Implement multi-dimensional topic analysis (emotional, thematic, temporal, contextual).
+   - Use vector embeddings for semantic similarity and clustering.
+   - Detect nuanced themes like "inner child work," "spiritual growth," "healing patterns."
+   - Support domain-specific topic detection (therapy, business, technical analysis).
+
+3. **Dynamic Context Selection:**
+
+   - Implement intelligent context prioritization based on relevance, recency, and user patterns.
+   - Create conversation clustering algorithms to group related discussions.
+   - Build temporal pattern recognition for seasonal or cyclical themes.
+   - Develop use case-specific context strategies (therapy sessions vs. data analysis).
+
+4. **Machine Learning Integration:**
+
+   - Train models to predict which historical context is most relevant for current questions.
+   - Implement adaptive learning that improves context selection based on user feedback.
+   - Use graph-based analysis to map relationships between conversations and topics.
+
+5. **Context Transparency & Control:**
+
+   - Provide users with visibility into what context is being used and why.
+   - Allow users to manually adjust context selection preferences.
+   - Implement context weighting and filtering options.
+
+6. **Frontend Enhancements:**
+   - Create advanced visualization of conversation clusters and topic networks.
+   - Build interactive timeline showing growth patterns and breakthroughs.
+   - Implement context preview and editing interface.
+   - Add use case selection and customization options.
 
 **Prompt for Implementation:**
 
-> Implement a growth tracking system that analyzes both historical and ongoing user data to detect patterns, milestones, and breakthroughs. Store these insights in the database and visualize them in the frontend.
+> Implement an advanced context intelligence system that combines sophisticated topic detection, dynamic context selection, and machine learning to provide personalized, relevant context for different use cases. Include growth tracking, pattern recognition, and adaptive learning capabilities with full user control and transparency.
 
 ---
 

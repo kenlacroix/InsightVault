@@ -5,6 +5,7 @@ import { ChatMessage } from "./ChatMessage";
 import { ChatInput } from "./ChatInput";
 import { AIProcessingIndicator } from "./AIProcessingIndicator";
 import { RecentInteractions } from "./RecentInteractions";
+import ContextFusionDisplay from "../context/ContextFusionDisplay";
 import { useAuth } from "@/contexts/AuthContext";
 
 interface Message {
@@ -36,6 +37,7 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
   const [setInputValue, setSetInputValue] = useState<React.Dispatch<
     React.SetStateAction<string>
   > | null>(null);
+  const [refreshTrigger, setRefreshTrigger] = useState(0);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   // Auto-scroll to bottom when new messages arrive
@@ -167,6 +169,9 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
         const filtered = prev.filter((msg) => msg.id !== loadingMessage.id);
         return [...filtered, assistantMessage];
       });
+
+      // Trigger refresh of recent interactions
+      setRefreshTrigger((prev) => prev + 1);
     } catch (error) {
       console.error("Error sending message:", error);
 
@@ -191,23 +196,30 @@ export function ChatInterface({ className = "" }: ChatInterfaceProps) {
 
   return (
     <div className={`flex h-full bg-gray-50 ${className}`}>
-      {/* Recent Interactions Sidebar */}
+      {/* Context Sidebar */}
       <div className="w-80 bg-white border-r border-gray-200 flex flex-col">
         <div className="p-4 border-b border-gray-200">
-          <h3 className="text-sm font-medium text-gray-900">Session Memory</h3>
+          <h3 className="text-sm font-medium text-gray-900">Context Fusion</h3>
           <p className="text-xs text-gray-500 mt-1">
-            Recent questions and answers
+            Historical conversations + recent interactions
           </p>
         </div>
-        <div className="flex-1 overflow-y-auto">
-          <RecentInteractions
-            onInteractionClick={(question) => {
-              if (setInputValue) {
-                setInputValue(question);
-              }
-            }}
-            className="border-0 rounded-none"
-          />
+        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+          <ContextFusionDisplay />
+          <div className="border-t pt-4">
+            <h4 className="text-sm font-medium text-gray-900 mb-2">
+              Session Memory
+            </h4>
+            <RecentInteractions
+              onInteractionClick={(question) => {
+                if (setInputValue) {
+                  setInputValue(question);
+                }
+              }}
+              className="border-0 rounded-none"
+              refreshTrigger={refreshTrigger}
+            />
+          </div>
         </div>
       </div>
 

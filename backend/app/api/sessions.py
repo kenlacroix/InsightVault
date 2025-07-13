@@ -117,19 +117,28 @@ async def get_recent_interactions(
     db: Session = Depends(get_sync_db)
 ):
     """Get recent interactions from the current session"""
+    print(f"🔍 Sessions API: Getting recent interactions for user {current_user.id}")
+    
     # Get current session
     session = db.query(UserSession).filter(
         UserSession.user_id == current_user.id,
         UserSession.session_end.is_(None)
     ).first()
     
+    print(f"🔍 Sessions API: Current session found: {session is not None}")
+    if session:
+        print(f"🔍 Sessions API: Session ID: {session.id}")
+    
     if not session:
+        print("🔍 Sessions API: No active session found, returning empty list")
         return []
     
     # Get recent interactions
     interactions = db.query(UserInteraction).filter(
         UserInteraction.session_id == session.id
     ).order_by(UserInteraction.created_at.desc()).limit(limit).all()
+    
+    print(f"🔍 Sessions API: Found {len(interactions)} interactions")
     
     interaction_responses = [
         InteractionResponse(
@@ -151,10 +160,13 @@ async def get_recent_interactions(
         interaction_count=len(interaction_responses)
     )
     
-    return [RecentInteractionsResponse(
+    result = [RecentInteractionsResponse(
         session=session_response,
         interactions=interaction_responses
     )]
+    
+    print(f"🔍 Sessions API: Returning {len(result)} session(s) with {len(interaction_responses)} interactions")
+    return result
 
 @router.get("/history", response_model=List[SessionResponse])
 async def get_session_history(
