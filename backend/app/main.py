@@ -8,6 +8,7 @@ from .api.chat import router as chat_router
 from .api.settings import router as settings_router
 from .api.sessions import router as sessions_router
 from .api.context import router as context_router
+from .api.advanced_context import router as advanced_context_router
 
 app = FastAPI(
     title="InsightVault API",
@@ -33,6 +34,7 @@ app.include_router(chat_router)
 app.include_router(settings_router)
 app.include_router(sessions_router)
 app.include_router(context_router)
+app.include_router(advanced_context_router)
 
 @app.get("/")
 async def root():
