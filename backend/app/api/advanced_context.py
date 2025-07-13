@@ -11,7 +11,11 @@ from pydantic import BaseModel
 from datetime import datetime
 
 from ..database import get_sync_db
-from ..models import User
+from ..models import (
+    User, Conversation, UserSession, UserInteraction, GrowthInsight,
+    ConversationCluster, ConversationClusterMembership, UseCaseProfile,
+    ContextSelectionLog
+)
 from ..advanced_context_intelligence import AdvancedContextIntelligenceEngine
 from ..auth import get_current_user
 
@@ -423,8 +427,6 @@ async def create_use_case_profile(
     Create or update a use case profile for personalized context selection.
     """
     try:
-        from ..models import UseCaseProfile
-        
         # Check if profile already exists
         existing_profile = db.query(UseCaseProfile).filter(
             UseCaseProfile.user_id == current_user.id,
@@ -473,8 +475,6 @@ async def get_use_case_profiles(
     Get all use case profiles for the current user.
     """
     try:
-        from ..models import UseCaseProfile
-        
         profiles = db.query(UseCaseProfile).filter(
             UseCaseProfile.user_id == current_user.id
         ).all()
@@ -513,8 +513,6 @@ async def get_growth_insights(
     Get growth insights for the current user, optionally filtered by type.
     """
     try:
-        from ..models import GrowthInsight
-        
         query = db.query(GrowthInsight).filter(
             GrowthInsight.user_id == current_user.id,
             GrowthInsight.is_active == True
@@ -559,8 +557,6 @@ async def get_context_transparency(
     Get transparency information about how context is selected and used.
     """
     try:
-        from ..models import ContextSelectionLog
-        
         # Get recent context selection logs
         recent_logs = db.query(ContextSelectionLog).filter(
             ContextSelectionLog.user_id == current_user.id
@@ -625,8 +621,6 @@ async def provide_context_feedback(
     Provide feedback on context selection to improve future selections.
     """
     try:
-        from ..models import ContextSelectionLog, UserInteraction
-        
         # Verify the interaction belongs to the user
         interaction = db.query(UserInteraction).join(UserSession).filter(
             UserInteraction.id == interaction_id,
